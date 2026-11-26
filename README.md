@@ -2,29 +2,29 @@
 
 A native Android file manager built with Kotlin and Jetpack Compose.
 
-## Current setup
+## App details
 
 - Application ID: `com.mobin.tigerfiles`
-- Minimum Android version: **Android 10 (API 29)**
+- Version: **0.2.0**
+- Minimum Android: **Android 10 (API 29)**
 - Target SDK: 35
-- UI: Persian, right-to-left, with system light/dark theme support
-- File access: Android Storage Access Framework (user-selected folders)
+- Persian RTL interface with automatic system light/dark theme
+- File access through Android Storage Access Framework; the user selects the folder the app can manage
 
-## Build
+## Features
 
-The GitHub Actions workflow builds a debug APK and publishes the latest successful build as the `latest` release.
+- Home dashboard with storage overview and file-category shortcuts
+- Browse folders and files, with grid and list layouts
+- Recursive search across the selected folder tree
+- Filter images, videos, audio, documents, APKs, archives and folders
+- Sort by name, size or modified date
+- Multi-select files and folders
+- Copy, cut, paste, rename and delete
+- Share one or multiple files with other apps
+- Favorites and recently opened files
+- File details and hidden-file visibility setting
+- Persistent access to the selected folder
 
-Before the first build, add the repository Actions secret:
+## Build and signing
 
-- Name: `ANDROID_DEBUG_KEYSTORE_BASE64`
-- Value: the same Base64 keystore used by the HTML Editor and Scanner projects
-
-The workflow checks the signing certificate before producing the APK so future updates can be installed over the previous build.
-
-## Current functionality
-
-- Select a folder using Android's system folder picker
-- Browse folders and files inside the selected location
-- Search and filter the current folder
-- Open files with compatible apps on the device
-- View a basic internal-storage usage summary
+GitHub Actions builds the debug APK and publishes the latest successful build as the `latest` release. The workflow verifies the stable signing certificate and reads the version directly from Gradle configuration.
