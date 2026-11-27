@@ -15,7 +15,7 @@ internal const val MAX_TEXT_EDITOR_CHARS = 1_048_576
 
 private const val MAX_ARCHIVE_ENTRIES = 5000
 private const val MAX_ARCHIVE_DEPTH = 32
-private const val MAX_ARCHIVE_BYTES = 1024L * 1024L * 1024L
+private const val MAX_ARCHIVE_BYTES = 512L * 1024L * 1024L
 
 private val EDITABLE_TEXT_EXTENSIONS = setOf(
     "txt", "md", "markdown", "json", "xml", "html", "htm", "css", "js",
@@ -24,8 +24,8 @@ private val EDITABLE_TEXT_EXTENSIONS = setOf(
 )
 
 internal fun isEditableTextFile(file: DocumentFile): Boolean =
-    !file.isDirectory &&
-        file.name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT) in EDITABLE_TEXT_EXTENSIONS
+    !cachedIsDirectory(file) &&
+        cachedName(file).substringAfterLast('.', "").lowercase(Locale.ROOT) in EDITABLE_TEXT_EXTENSIONS
 
 private fun safeArchiveSegment(value: String): String {
     val cleaned = value
@@ -65,6 +65,7 @@ internal fun createZipArchive(
         ZipOutputStream(BufferedOutputStream(rawOutput)).use { zip ->
             val usedPaths = HashSet<String>()
             val usedRoots = HashSet<String>()
+            val visitedDirectories = HashSet<String>()
             val buffer = ByteArray(64 * 1024)
             var entryCount = 0
             var totalBytes = 0L
@@ -76,6 +77,8 @@ internal fun createZipArchive(
                 if (path.isBlank()) return
 
                 if (node.isDirectory) {
+                    val directoryUri = runCatching { node.uri.toString() }.getOrDefault("")
+                    if (!visitedDirectories.add(directoryUri)) return
                     val directoryPath = "$path/"
                     if (usedPaths.add(directoryPath)) {
                         entryCount++
@@ -230,9 +233,10 @@ private fun mimeForExtractedName(name: String): String = when (
     else -> "application/octet-stream"
 }
 
-private fun deleteDocumentTree(file: DocumentFile) {
-    if (file.isDirectory) {
-        runCatching { file.listFiles().forEach { child -> deleteDocumentTree(child) } }
+private fun deleteDocumentTree(file: DocumentFile, depth: Int = 0) {
+    if (depth > MAX_ARCHIVE_DEPTH + 8) return
+    if (runCatching { file.isDirectory }.getOrDefault(false)) {
+        runCatching { file.listFiles().forEach { child -> deleteDocumentTree(child, depth + 1) } }
     }
     runCatching { file.delete() }
 }
