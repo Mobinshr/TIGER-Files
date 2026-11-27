@@ -1,4 +1,4 @@
-package com.mobin.tigerfiles
+package com.mobin.filemanager
 
 import android.content.ClipData
 import android.content.Context
@@ -20,6 +20,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,7 +37,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -45,7 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
-import com.mobin.tigerfiles.ui.theme.TigerFilesTheme
+import com.mobin.filemanager.ui.theme.FileManagerTheme
 import java.io.IOException
 import java.text.DateFormat
 import java.util.Date
@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { TigerFilesTheme { TigerFilesApp() } }
+        setContent { FileManagerTheme { FileManagerApp() } }
     }
 }
 
@@ -86,7 +86,7 @@ private data class StorageInfo(val total: Long, val free: Long) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun TigerFilesApp() {
+private fun FileManagerApp() {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("tiger_files_preferences", Context.MODE_PRIVATE) }
     val initialRoot = remember(context) {
@@ -97,9 +97,22 @@ private fun TigerFilesApp() {
     var screen by remember { mutableStateOf(AppScreen.HOME) }
     var category by remember { mutableStateOf(FileCategory.ALL) }
     var query by remember { mutableStateOf("") }
-    var sortMode by remember { mutableStateOf(SortMode.NAME) }
-    var gridMode by remember { mutableStateOf(true) }
-    var showHidden by remember { mutableStateOf(prefs.getBoolean("show_hidden", false)) }
+    var sortMode by remember(prefs) {
+        mutableStateOf(
+            runCatching {
+                SortMode.valueOf(prefs.getString("sort_mode", SortMode.NAME.name) ?: SortMode.NAME.name)
+            }.getOrDefault(SortMode.NAME)
+        )
+    }
+    var gridMode by remember(prefs) { mutableStateOf(prefs.getBoolean("grid_mode", true)) }
+    var showHidden by remember(prefs) { mutableStateOf(prefs.getBoolean("show_hidden", false)) }
+    var recordRecentFiles by remember(prefs) { mutableStateOf(prefs.getBoolean("record_recent", true)) }
+    var confirmBeforeDelete by remember(prefs) { mutableStateOf(prefs.getBoolean("confirm_delete", true)) }
+    var homeShowSummary by remember(prefs) { mutableStateOf(prefs.getBoolean("home_show_summary", true)) }
+    var homeShowStorage by remember(prefs) { mutableStateOf(prefs.getBoolean("home_show_storage", true)) }
+    var homeShowCategories by remember(prefs) { mutableStateOf(prefs.getBoolean("home_show_categories", true)) }
+    var homeShowRecent by remember(prefs) { mutableStateOf(prefs.getBoolean("home_show_recent", true)) }
+    var homeShowLargest by remember(prefs) { mutableStateOf(prefs.getBoolean("home_show_largest", true)) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var scanning by remember { mutableStateOf(false) }
     var loadingFolder by remember { mutableStateOf(false) }
@@ -247,6 +260,7 @@ private fun TigerFilesApp() {
         persistFavorites()
     }
     fun recordRecent(file: DocumentFile) {
+        if (!recordRecentFiles) return
         val key = file.uri.toString()
         recentUris.remove(key)
         recentUris.add(0, key)
@@ -450,7 +464,7 @@ private fun TigerFilesApp() {
         scope.launch {
             busy = true
             val archive = withContext(Dispatchers.IO) {
-                createZipArchive(context, sources, destination, "TIGER_${System.currentTimeMillis()}.zip")
+                createZipArchive(context, sources, destination, "FileManager_${System.currentTimeMillis()}.zip")
             }
             busy = false
             if (archive != null) {
@@ -496,13 +510,13 @@ private fun TigerFilesApp() {
     }
 
     Box(Modifier.fillMaxSize()) {
-        TigerBackdrop(Modifier.matchParentSize())
+        FileManagerBackdrop(Modifier.matchParentSize())
         Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("TIGER Files", fontWeight = FontWeight.ExtraBold)
+                        Text("File Manager", fontWeight = FontWeight.ExtraBold)
                         Text(screen.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
@@ -513,13 +527,17 @@ private fun TigerFilesApp() {
                         }
                     } else {
                         Surface(Modifier.padding(start = 12.dp).size(42.dp), shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), shadowElevation = 0.dp) {
-                            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.FolderSpecial, contentDescription = "TIGER Files", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp)) }
+                            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.FolderSpecial, contentDescription = "File Manager", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp)) }
                         }
                     }
                 },
                 actions = {
                     if (screen == AppScreen.FILES) {
-                        IconButton(onClick = { gridMode = !gridMode }) {
+                        IconButton(onClick = {
+                            val nextMode = !gridMode
+                            gridMode = nextMode
+                            prefs.edit().putBoolean("grid_mode", nextMode).apply()
+                        }) {
                             Icon(if (gridMode) Icons.Default.List else Icons.Default.GridView, contentDescription = "تغییر نمایش")
                         }
                         IconButton(onClick = { sortMenuExpanded = true }) { Icon(Icons.Default.Sort, contentDescription = "مرتب‌سازی") }
@@ -527,7 +545,11 @@ private fun TigerFilesApp() {
                             SortMode.values().forEach { mode ->
                                 DropdownMenuItem(
                                     text = { Text("مرتب‌سازی بر اساس " + mode.label) },
-                                    onClick = { sortMode = mode; sortMenuExpanded = false }
+                                    onClick = {
+                                        sortMode = mode
+                                        prefs.edit().putString("sort_mode", mode.name).apply()
+                                        sortMenuExpanded = false
+                                    }
                                 )
                             }
                         }
@@ -586,6 +608,7 @@ private fun TigerFilesApp() {
                 Modifier.padding(padding), rootFolder, remember { readStorageInfo() }, recentFiles,
                 dashboardLargestFiles,
                 dashboardFileCount, dashboardFolderCount, dashboardCounts, scanning, dashboardScanLimited,
+                homeShowSummary, homeShowStorage, homeShowCategories, homeShowRecent, homeShowLargest,
                 onChooseFolder = { folderPicker.launch(null) },
                 onOpenFiles = { screen = AppScreen.FILES; category = FileCategory.ALL },
                 onCategory = { selectCategory(it) },
@@ -607,7 +630,9 @@ private fun TigerFilesApp() {
                 onCut = { copyOrCutSelection(true) },
                 onFavorite = { selectedFiles.forEach { file -> toggleFavorite(file) }; selectedUris.clear() },
                 onShare = { shareFiles(selectedFiles) },
-                onDelete = { showDeleteDialog = true },
+                onDelete = {
+                    if (confirmBeforeDelete) showDeleteDialog = true else deleteSelected()
+                },
                 onRename = { nameInput = selectedFiles.singleOrNull()?.let { cachedName(it) }.orEmpty(); showRenameDialog = true },
                 onPaste = { pasteClipboard() },
                 onRefresh = { refreshFileData() },
@@ -632,11 +657,89 @@ private fun TigerFilesApp() {
                 { folderPicker.launch(null) }
             )
             AppScreen.SETTINGS -> SettingsScreen(
-                Modifier.padding(padding), rootFolder, showHidden,
-                onShowHidden = { showHidden = it; prefs.edit().putBoolean("show_hidden", it).apply() },
+                modifier = Modifier.padding(padding),
+                rootFolder = rootFolder,
+                showHidden = showHidden,
+                gridMode = gridMode,
+                sortMode = sortMode,
+                recordRecentFiles = recordRecentFiles,
+                confirmBeforeDelete = confirmBeforeDelete,
+                homeShowSummary = homeShowSummary,
+                homeShowStorage = homeShowStorage,
+                homeShowCategories = homeShowCategories,
+                homeShowRecent = homeShowRecent,
+                homeShowLargest = homeShowLargest,
+                onShowHidden = {
+                    showHidden = it
+                    prefs.edit().putBoolean("show_hidden", it).apply()
+                },
+                onGridMode = {
+                    gridMode = it
+                    prefs.edit().putBoolean("grid_mode", it).apply()
+                },
+                onSortMode = {
+                    sortMode = it
+                    prefs.edit().putString("sort_mode", it.name).apply()
+                },
+                onRecordRecentFiles = {
+                    recordRecentFiles = it
+                    prefs.edit().putBoolean("record_recent", it).apply()
+                },
+                onConfirmBeforeDelete = {
+                    confirmBeforeDelete = it
+                    prefs.edit().putBoolean("confirm_delete", it).apply()
+                },
+                onHomeShowSummary = {
+                    homeShowSummary = it
+                    prefs.edit().putBoolean("home_show_summary", it).apply()
+                },
+                onHomeShowStorage = {
+                    homeShowStorage = it
+                    prefs.edit().putBoolean("home_show_storage", it).apply()
+                },
+                onHomeShowCategories = {
+                    homeShowCategories = it
+                    prefs.edit().putBoolean("home_show_categories", it).apply()
+                },
+                onHomeShowRecent = {
+                    homeShowRecent = it
+                    prefs.edit().putBoolean("home_show_recent", it).apply()
+                },
+                onHomeShowLargest = {
+                    homeShowLargest = it
+                    prefs.edit().putBoolean("home_show_largest", it).apply()
+                },
                 onChooseFolder = { folderPicker.launch(null) },
                 onRescan = { refreshFileData() },
-                onClearRecents = { recentUris.clear(); prefs.edit().remove("recents").apply() }
+                onClearRecents = {
+                    recentUris.clear()
+                    prefs.edit().remove("recents").apply()
+                },
+                onResetSettings = {
+                    showHidden = false
+                    gridMode = true
+                    sortMode = SortMode.NAME
+                    recordRecentFiles = true
+                    confirmBeforeDelete = true
+                    homeShowSummary = true
+                    homeShowStorage = true
+                    homeShowCategories = true
+                    homeShowRecent = true
+                    homeShowLargest = true
+                    prefs.edit()
+                        .putBoolean("show_hidden", false)
+                        .putBoolean("grid_mode", true)
+                        .putString("sort_mode", SortMode.NAME.name)
+                        .putBoolean("record_recent", true)
+                        .putBoolean("confirm_delete", true)
+                        .putBoolean("home_show_summary", true)
+                        .putBoolean("home_show_storage", true)
+                        .putBoolean("home_show_categories", true)
+                        .putBoolean("home_show_recent", true)
+                        .putBoolean("home_show_largest", true)
+                        .apply()
+                    Toast.makeText(context, "تنظیمات به حالت پیش‌فرض برگشت", Toast.LENGTH_SHORT).show()
+                }
             )
         }
         }
@@ -802,7 +905,7 @@ private fun TigerFilesApp() {
 }
 
 @Composable
-private fun TigerBackdrop(modifier: Modifier = Modifier) {
+private fun FileManagerBackdrop(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
 }
 
@@ -818,6 +921,11 @@ private fun HomeDashboard(
     categoryCounts: Map<FileCategory, Int>,
     scanning: Boolean,
     scanLimited: Boolean,
+    showSummary: Boolean,
+    showStorage: Boolean,
+    showCategories: Boolean,
+    showRecent: Boolean,
+    showLargest: Boolean,
     onChooseFolder: () -> Unit,
     onOpenFiles: () -> Unit,
     onCategory: (FileCategory) -> Unit,
@@ -826,204 +934,236 @@ private fun HomeDashboard(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(15.dp)
     ) {
         item {
-            DashboardHero(
+            HomeFolderCard(
                 rootFolder = rootFolder,
                 fileCount = fileCount,
                 folderCount = folderCount,
                 scanning = scanning,
-                onAction = if (rootFolder == null) onChooseFolder else onOpenFiles
+                showSummary = showSummary,
+                onChooseFolder = onChooseFolder,
+                onOpenFiles = onOpenFiles
             )
         }
-        item { StorageOverview(storageInfo) }
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { SectionHeading("دسترسی سریع", "دسته‌بندی فایل‌ها") }
-                Text("۶ دسته", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            }
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CategoryTile(FileCategory.IMAGES, categoryCounts[FileCategory.IMAGES] ?: 0, Modifier.weight(1f), onCategory)
-                    CategoryTile(FileCategory.VIDEOS, categoryCounts[FileCategory.VIDEOS] ?: 0, Modifier.weight(1f), onCategory)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CategoryTile(FileCategory.AUDIO, categoryCounts[FileCategory.AUDIO] ?: 0, Modifier.weight(1f), onCategory)
-                    CategoryTile(FileCategory.DOCUMENTS, categoryCounts[FileCategory.DOCUMENTS] ?: 0, Modifier.weight(1f), onCategory)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CategoryTile(FileCategory.APK, categoryCounts[FileCategory.APK] ?: 0, Modifier.weight(1f), onCategory)
-                    CategoryTile(FileCategory.ARCHIVES, categoryCounts[FileCategory.ARCHIVES] ?: 0, Modifier.weight(1f), onCategory)
-                }
-            }
-        }
-        if (scanLimited) {
+
+        if (rootFolder != null && showCategories) {
             item {
-                Text(
-                    "اسکن به‌دلیل محدودیت ایمنی ممکن است همهٔ فایل‌های پوشه‌های بسیار بزرگ یا عمیق را پوشش نداده باشد.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        SectionHeading("دسترسی سریع", "انتخاب نوع فایل برای مشاهده")
+                    }
+                    Text(
+                        "۶ دسته",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { SectionHeading("اخیراً بازشده", "فایل‌هایی که آخرین بار استفاده کردی") }
-                if (scanning) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-            }
-        }
-        if (recentFiles.isEmpty()) {
             item {
-                Surface(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f))
-                ) {
-                    Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(15.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                        Spacer(Modifier.width(13.dp))
-                        Column {
-                            Text("هنوز فایلی باز نکردی", fontWeight = FontWeight.SemiBold)
-                            Text("فایل‌های اخیرت بعد از اولین استفاده اینجا می‌آیند", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CategoryTile(FileCategory.IMAGES, categoryCounts[FileCategory.IMAGES] ?: 0, Modifier.weight(1f), onCategory)
+                        CategoryTile(FileCategory.VIDEOS, categoryCounts[FileCategory.VIDEOS] ?: 0, Modifier.weight(1f), onCategory)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CategoryTile(FileCategory.AUDIO, categoryCounts[FileCategory.AUDIO] ?: 0, Modifier.weight(1f), onCategory)
+                        CategoryTile(FileCategory.DOCUMENTS, categoryCounts[FileCategory.DOCUMENTS] ?: 0, Modifier.weight(1f), onCategory)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CategoryTile(FileCategory.APK, categoryCounts[FileCategory.APK] ?: 0, Modifier.weight(1f), onCategory)
+                        CategoryTile(FileCategory.ARCHIVES, categoryCounts[FileCategory.ARCHIVES] ?: 0, Modifier.weight(1f), onCategory)
                     }
                 }
             }
-        } else {
-            items(recentFiles, key = { "recent_" + it.uri.toString() }) { file ->
-                FileRowCard(file, false, false, false, { onOpenFile(file) }, {}, {})
+        }
+
+        if (rootFolder != null && showRecent) {
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        SectionHeading("اخیراً بازشده", "فایل‌هایی که آخرین بار استفاده شده‌اند")
+                    }
+                    if (scanning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+            if (recentFiles.isEmpty()) {
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                        )
+                    ) {
+                        Row(
+                            Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.History,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(25.dp)
+                            )
+                            Spacer(Modifier.width(11.dp))
+                            Column {
+                                Text("هنوز فایلی باز نشده", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "فایل‌های استفاده‌شده در این بخش نمایش داده می‌شوند.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                items(recentFiles, key = { "recent_" + it.uri.toString() }) { file ->
+                    FileRowCard(file, false, false, false, { onOpenFile(file) }, {}, {})
+                }
             }
         }
-        if (largestFiles.isNotEmpty()) {
+
+        if (rootFolder != null && showLargest && largestFiles.isNotEmpty()) {
             item {
-                SectionHeading("فایل‌های حجیم", "پنج فایل با بیشترین حجم در پوشه انتخابی")
+                SectionHeading("فایل‌های حجیم", "پنج فایل بزرگ در پوشهٔ انتخاب‌شده")
             }
             items(largestFiles, key = { "largest_" + it.uri.toString() }) { file ->
                 FileRowCard(file, false, false, false, { onOpenFile(file) }, {}, {})
             }
         }
-        item {
-            Text(
-                "مدیریت فایل‌ها  •  ساده، مرتب و سریع",
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
 
-@Composable
-private fun DashboardHero(
-    rootFolder: DocumentFile?,
-    fileCount: Int,
-    folderCount: Int,
-    scanning: Boolean,
-    onAction: () -> Unit
-) {
-    val gold = Color(0xFFFFB52E)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(30.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Box(
-            Modifier.fillMaxWidth()
-                .background(Brush.linearGradient(listOf(Color(0xFF101827), Color(0xFF1D3045), Color(0xFF55390F))))
-                .padding(20.dp)
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("مدیریت فایل‌ها", style = MaterialTheme.typography.labelSmall, color = gold, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(9.dp))
-                        Text(
-                            "همه‌چیز،\nسر جای خودش.",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            lineHeight = MaterialTheme.typography.headlineSmall.lineHeight
-                        )
-                        Spacer(Modifier.height(7.dp))
-                        Text(
-                            if (rootFolder == null) "برای شروع، پوشه‌ای از حافظه انتخاب کن" else "مدیریت فایل‌ها در یک فضای منظم و سریع",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.72f)
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        modifier = Modifier.size(82.dp),
-                        shape = RoundedCornerShape(25.dp),
-                        color = Color.White.copy(alpha = 0.09f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.FolderCopy, contentDescription = null, tint = gold, modifier = Modifier.size(43.dp))
-                        }
-                    }
-                }
-                Spacer(Modifier.height(20.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HeroMetric("فایل‌ها", fileCount.toString(), Modifier.weight(1f))
-                    HeroMetric("پوشه‌ها", folderCount.toString(), Modifier.weight(1f))
-                    HeroMetric("وضعیت", if (scanning) "در حال اسکن" else if (rootFolder == null) "آماده" else "فعال", Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(18.dp))
-                Button(
-                    onClick = onAction,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(15.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = gold, contentColor = Color(0xFF151B25)),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-                ) {
-                    Icon(if (rootFolder == null) Icons.Default.FolderOpen else Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (rootFolder == null) "انتخاب پوشه اصلی" else "رفتن به فایل‌ها", fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
-                    Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(17.dp))
-                }
-                if (rootFolder != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "پوشه فعال: " + (cachedName(rootFolder).ifBlank { "حافظه انتخاب‌شده" }),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.64f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+        if (showStorage) {
+            item { StorageOverview(storageInfo) }
+        }
+
+        if (rootFolder != null && scanLimited) {
+            item {
+                Text(
+                    "به‌دلیل محدودیت ایمنی، ممکن است نمایه‌سازی همهٔ فایل‌های پوشه‌های بسیار بزرگ یا عمیق کامل نشده باشد.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
 
 @Composable
-private fun HeroMetric(label: String, value: String, modifier: Modifier = Modifier) {
+private fun HomeFolderCard(
+    rootFolder: DocumentFile?,
+    fileCount: Int,
+    folderCount: Int,
+    scanning: Boolean,
+    showSummary: Boolean,
+    onChooseFolder: () -> Unit,
+    onOpenFiles: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)
+        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(48.dp),
+                    shape = RoundedCornerShape(15.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.FolderOpen,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (rootFolder == null) "پوشهٔ اصلی انتخاب نشده" else "پوشهٔ فعال",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        rootFolder?.let { cachedName(it).ifBlank { "حافظهٔ انتخاب‌شده" } }
+                            ?: "برای مدیریت فایل‌ها یک پوشه انتخاب کن",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (scanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(21.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+            }
+
+            if (rootFolder != null && showSummary) {
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeSummaryValue("فایل", toPersianDigits(fileCount.toString()), Modifier.weight(1f))
+                    HomeSummaryValue("پوشه", toPersianDigits(folderCount.toString()), Modifier.weight(1f))
+                }
+            }
+
+            Button(
+                onClick = if (rootFolder == null) onChooseFolder else onOpenFiles,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(
+                    if (rootFolder == null) Icons.Default.FolderOpen else Icons.Default.Folder,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(if (rootFolder == null) "انتخاب پوشهٔ اصلی" else "باز کردن فایل‌ها")
+                Spacer(Modifier.weight(1f))
+                Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(17.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeSummaryValue(label: String, value: String, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = Color.White.copy(alpha = 0.08f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+        shape = RoundedCornerShape(13.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f)
     ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp)) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.68f))
-            Spacer(Modifier.height(3.dp))
-            Text(value, style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.weight(1f))
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -1472,41 +1612,268 @@ private fun SettingsScreen(
     modifier: Modifier,
     rootFolder: DocumentFile?,
     showHidden: Boolean,
+    gridMode: Boolean,
+    sortMode: SortMode,
+    recordRecentFiles: Boolean,
+    confirmBeforeDelete: Boolean,
+    homeShowSummary: Boolean,
+    homeShowStorage: Boolean,
+    homeShowCategories: Boolean,
+    homeShowRecent: Boolean,
+    homeShowLargest: Boolean,
     onShowHidden: (Boolean) -> Unit,
+    onGridMode: (Boolean) -> Unit,
+    onSortMode: (SortMode) -> Unit,
+    onRecordRecentFiles: (Boolean) -> Unit,
+    onConfirmBeforeDelete: (Boolean) -> Unit,
+    onHomeShowSummary: (Boolean) -> Unit,
+    onHomeShowStorage: (Boolean) -> Unit,
+    onHomeShowCategories: (Boolean) -> Unit,
+    onHomeShowRecent: (Boolean) -> Unit,
+    onHomeShowLargest: (Boolean) -> Unit,
     onChooseFolder: () -> Unit,
     onRescan: () -> Unit,
-    onClearRecents: () -> Unit
+    onClearRecents: () -> Unit,
+    onResetSettings: () -> Unit
 ) {
-    Column(modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        SectionHeading("تنظیمات TIGER Files", "مدیریت دسترسی‌ها و رفتار برنامه")
-        Card(shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))) {
-            Column(Modifier.padding(16.dp)) {
-                Text("پوشه اصلی", fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(5.dp))
-                Text(rootFolder?.let { cachedName(it) }?.ifBlank { "هیچ پوشه‌ای انتخاب نشده" } ?: "هیچ پوشه‌ای انتخاب نشده", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = onChooseFolder, modifier = Modifier.fillMaxWidth()) { Text("تغییر پوشه اصلی") }
-            }
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        SectionHeading("تنظیمات File Manager", "رفتار برنامه و بخش‌های صفحهٔ اصلی را شخصی‌سازی کن")
+
+        SettingsGroup("رفتار فایل‌ها", Icons.Default.Tune) {
+            SettingsSwitchRow(
+                "نمایش فایل‌های مخفی",
+                "فایل‌ها و پوشه‌هایی که نامشان با نقطه شروع می‌شود",
+                Icons.Default.Visibility,
+                showHidden,
+                onShowHidden
+            )
+            SettingsSwitchRow(
+                "نمایش شبکه‌ای",
+                "حالت پیش‌فرض نمایش فایل‌ها به‌صورت کارت‌های دو ستونه",
+                Icons.Default.GridView,
+                gridMode,
+                onGridMode
+            )
+            SettingsSortRow(sortMode, onSortMode)
+            SettingsSwitchRow(
+                "ثبت فایل‌های اخیر",
+                "فایل‌هایی که باز می‌کنی در تاریخچه ذخیره شوند",
+                Icons.Default.History,
+                recordRecentFiles,
+                onRecordRecentFiles
+            )
+            SettingsSwitchRow(
+                "تأیید پیش از حذف",
+                "قبل از حذف فایل‌ها یک پیام تأیید نمایش داده شود",
+                Icons.Default.Delete,
+                confirmBeforeDelete,
+                onConfirmBeforeDelete
+            )
         }
-        Card(shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))) {
-            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("نمایش فایل‌های مخفی", fontWeight = FontWeight.SemiBold)
-                    Text("فایل‌هایی که نامشان با نقطه شروع می‌شود", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        SettingsGroup("نمایش صفحهٔ اصلی", Icons.Default.Home) {
+            SettingsSwitchRow(
+                "نمایش آمار فایل‌ها و پوشه‌ها",
+                "تعداد موارد در کارت پوشهٔ فعال",
+                Icons.Default.Assessment,
+                homeShowSummary,
+                onHomeShowSummary
+            )
+            SettingsSwitchRow(
+                "نمایش وضعیت حافظه",
+                "میزان فضای مصرف‌شده و آزاد حافظهٔ داخلی",
+                Icons.Default.Storage,
+                homeShowStorage,
+                onHomeShowStorage
+            )
+            SettingsSwitchRow(
+                "نمایش دسته‌بندی سریع",
+                "میانبر تصاویر، ویدئوها، موسیقی، اسناد و فایل‌های دیگر",
+                Icons.Default.FolderCopy,
+                homeShowCategories,
+                onHomeShowCategories
+            )
+            SettingsSwitchRow(
+                "نمایش فایل‌های اخیر",
+                "فهرست فایل‌هایی که اخیراً باز کرده‌ای",
+                Icons.Default.History,
+                homeShowRecent,
+                onHomeShowRecent
+            )
+            SettingsSwitchRow(
+                "نمایش فایل‌های حجیم",
+                "پنج فایل بزرگ پوشهٔ انتخاب‌شده",
+                Icons.Default.BarChart,
+                homeShowLargest,
+                onHomeShowLargest
+            )
+        }
+
+        SettingsGroup("پوشه و نگهداری", Icons.Default.FolderOpen) {
+            Text(
+                rootFolder?.let { cachedName(it).ifBlank { "پوشهٔ انتخاب‌شده" } }
+                    ?: "هنوز پوشه‌ای انتخاب نشده",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
+            )
+            SettingsActionRow(
+                "تغییر پوشهٔ اصلی",
+                "انتخاب پوشه‌ای که فایل‌منیجر به آن دسترسی دارد",
+                Icons.Default.FolderOpen,
+                onChooseFolder
+            )
+            SettingsActionRow(
+                "بازسازی فهرست فایل‌ها",
+                "اسکن دوبارهٔ پوشهٔ انتخاب‌شده",
+                Icons.Default.Refresh,
+                onRescan
+            )
+            SettingsActionRow(
+                "پاک کردن تاریخچهٔ اخیر",
+                "حذف فهرست فایل‌های اخیراً بازشده",
+                Icons.Default.DeleteOutline,
+                onClearRecents
+            )
+            SettingsActionRow(
+                "بازنشانی تنظیمات",
+                "برگرداندن گزینه‌های این صفحه به حالت پیش‌فرض",
+                Icons.Default.RestartAlt,
+                onResetSettings
+            )
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text("File Manager • نسخهٔ ۰٫۸٫۰", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("ساخته شده توسط mobin", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroup(
+    title: String,
+    icon: ImageVector,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(19.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+            content = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 }
-                Switch(checked = showHidden, onCheckedChange = onShowHidden)
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f))
+                content()
+            }
+        )
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(8.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun SettingsSortRow(
+    sortMode: SortMode,
+    onSortMode: (SortMode) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Sort, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("مرتب‌سازی پیش‌فرض", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("ترتیب اولیهٔ فایل‌ها در فهرست", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(onClick = { expanded = true }) {
+                Text(sortMode.label)
+                Icon(Icons.Default.ExpandMore, contentDescription = null)
             }
         }
-        Card(shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("ابزارها", fontWeight = FontWeight.Bold)
-                TextButton(onClick = onRescan) { Icon(Icons.Default.Refresh, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("اسکن دوباره فایل‌ها") }
-                TextButton(onClick = onClearRecents) { Icon(Icons.Default.Delete, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("پاک کردن تاریخچه اخیر") }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            SortMode.values().forEach { mode ->
+                DropdownMenuItem(
+                    text = { Text(mode.label) },
+                    leadingIcon = {
+                        if (mode == sortMode) Icon(Icons.Default.Check, contentDescription = null)
+                    },
+                    onClick = {
+                        onSortMode(mode)
+                        expanded = false
+                    }
+                )
             }
         }
-        Spacer(Modifier.weight(1f))
-        Text("نسخه ۰٫۷٫۵", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("ساخته شده توسط mobin", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                Text(description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

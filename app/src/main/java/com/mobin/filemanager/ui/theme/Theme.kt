@@ -1,4 +1,4 @@
-package com.mobin.tigerfiles.ui.theme
+package com.mobin.filemanager.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +50,7 @@ private val DarkColors = darkColorScheme(
 )
 
 @Composable
-fun TigerFilesTheme(
+fun FileManagerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {

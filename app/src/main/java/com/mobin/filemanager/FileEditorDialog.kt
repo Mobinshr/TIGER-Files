@@ -1,4 +1,4 @@
-package com.mobin.tigerfiles
+package com.mobin.filemanager
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

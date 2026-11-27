@@ -1,4 +1,4 @@
-package com.mobin.tigerfiles
+package com.mobin.filemanager
 
 import android.content.Context
 import androidx.documentfile.provider.DocumentFile
@@ -55,7 +55,7 @@ internal fun createZipArchive(
     requestedName: String
 ): DocumentFile? {
     if (sources.isEmpty()) return null
-    val base = requestedName.trim().removeSuffix(".zip").ifBlank { "TIGER_Archive" }
+    val base = requestedName.trim().removeSuffix(".zip").ifBlank { "FileManager_Archive" }
     val outputName = uniqueNameInFolder(destination, "$base.zip")
     val outputFile = destination.createFile("application/zip", outputName) ?: return null
 

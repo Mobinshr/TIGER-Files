@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "TIGER Files"
+rootProject.name = "File Manager"
 include(":app")
