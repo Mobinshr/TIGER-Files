@@ -318,8 +318,8 @@ private fun TigerFilesApp() {
                             Icon(Icons.Default.ArrowBack, contentDescription = "بازگشت")
                         }
                     } else {
-                        Surface(Modifier.padding(start = 12.dp).size(42.dp), shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.primaryContainer, shadowElevation = 3.dp) {
-                            Box(contentAlignment = Alignment.Center) { Text("T", color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge) }
+                        Surface(Modifier.padding(start = 12.dp).size(42.dp), shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), shadowElevation = 0.dp) {
+                            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.FolderSpecial, contentDescription = "TIGER Files", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp)) }
                         }
                     }
                 },
@@ -340,11 +340,11 @@ private fun TigerFilesApp() {
                     }
                     IconButton(onClick = { refreshKey++ }) { Icon(Icons.Default.Refresh, contentDescription = "تازه‌سازی") }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background, scrolledContainerColor = MaterialTheme.colorScheme.surface)
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.72f), scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface, tonalElevation = 8.dp) {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), contentColor = MaterialTheme.colorScheme.onSurface, tonalElevation = 0.dp) {
                 AppScreen.values().forEach { item ->
                     val icon = when (item) {
                         AppScreen.HOME -> Icons.Default.Home
@@ -556,12 +556,12 @@ private fun HomeDashboard(
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(13.dp)
     ) {
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent), elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)) {
-                Box(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), MaterialTheme.colorScheme.secondaryContainer))).padding(20.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)), colors = CardDefaults.cardColors(containerColor = Color.Transparent), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+                Box(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), MaterialTheme.colorScheme.secondary.copy(alpha = 0.13f), MaterialTheme.colorScheme.surface.copy(alpha = 0.84f)))).padding(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("مدیریت فایل‌ها، سریع و مرتب", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -574,7 +574,7 @@ private fun HomeDashboard(
                                 Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
                         }
-                        Surface(shape = RoundedCornerShape(23.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), modifier = Modifier.size(76.dp), shadowElevation = 2.dp) {
+                        Surface(shape = RoundedCornerShape(23.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.54f), modifier = Modifier.size(76.dp), shadowElevation = 0.dp) {
                             Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.FolderCopy, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp)) }
                         }
                     }
@@ -609,7 +609,7 @@ private fun HomeDashboard(
         }
         if (recentFiles.isEmpty()) {
             item {
-                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Card(shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))) {
                     Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(10.dp))
@@ -628,8 +628,8 @@ private fun HomeDashboard(
 
 @Composable
 private fun StorageOverview(info: StorageInfo) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
-        Column(Modifier.padding(18.dp)) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.64f)), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f), modifier = Modifier.size(44.dp)) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.secondary) }
@@ -654,10 +654,10 @@ private fun StorageOverview(info: StorageInfo) {
 
 @Composable
 private fun CategoryTile(category: FileCategory, modifier: Modifier, onClick: (FileCategory) -> Unit) {
-    Card(modifier = modifier, onClick = { onClick(category) }, shape = RoundedCornerShape(21.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+    Card(modifier = modifier, onClick = { onClick(category) }, shape = RoundedCornerShape(19.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(44.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(category.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp)) }
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(42.dp)) {
+                Box(contentAlignment = Alignment.Center) { Icon(category.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) }
             }
             Spacer(Modifier.width(10.dp))
             Text(category.label, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
@@ -735,7 +735,7 @@ private fun BrowserScreen(
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
             trailingIcon = { if (query.isNotBlank()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Default.Close, contentDescription = "پاک کردن") } },
             shape = RoundedCornerShape(18.dp),
-            colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent)
+            colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f), unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.56f), focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent)
         )
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -832,7 +832,7 @@ private fun SelectionActions(
     onRename: () -> Unit,
     onClear: () -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.secondaryContainer).padding(8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.62f)).padding(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("$count انتخاب شده", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
             Spacer(Modifier.weight(1f))
@@ -874,9 +874,9 @@ private fun FileRowCard(
     Card(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = RoundedCornerShape(19.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant),
-        colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+        colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.17f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
             FileIconBox(fileIcon(file), folder)
@@ -932,7 +932,7 @@ private fun FileGridCard(
 
 @Composable
 private fun FileIconBox(icon: ImageVector, folder: Boolean, size: Dp = 44.dp) {
-    Surface(Modifier.size(size), shape = RoundedCornerShape(15.dp), color = if (folder) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
+    Surface(Modifier.size(size), shape = RoundedCornerShape(15.dp), color = if (folder) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)) {
         Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = null, tint = if (folder) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(size * 0.52f)) }
     }
 }
@@ -979,7 +979,7 @@ private fun SettingsScreen(
 ) {
     Column(modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         SectionHeading("تنظیمات TIGER Files", "مدیریت دسترسی‌ها و رفتار برنامه")
-        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Card(shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))) {
             Column(Modifier.padding(16.dp)) {
                 Text("پوشه اصلی", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(5.dp))
@@ -988,7 +988,7 @@ private fun SettingsScreen(
                 Button(onClick = onChooseFolder, modifier = Modifier.fillMaxWidth()) { Text("تغییر پوشه اصلی") }
             }
         }
-        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Card(shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("نمایش فایل‌های مخفی", fontWeight = FontWeight.SemiBold)
@@ -997,7 +997,7 @@ private fun SettingsScreen(
                 Switch(checked = showHidden, onCheckedChange = onShowHidden)
             }
         }
-        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Card(shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("ابزارها", fontWeight = FontWeight.Bold)
                 TextButton(onClick = onRescan) { Icon(Icons.Default.Refresh, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("اسکن دوباره فایل‌ها") }
@@ -1005,7 +1005,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        Text("TIGER Files  •  نسخه 0.4.0", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("TIGER Files  •  نسخه 0.5.0", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("ساخته شده توسط mobin", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
