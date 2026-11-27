@@ -1040,7 +1040,7 @@ private fun StorageOverview(info: StorageInfo) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(7.dp))
-                        Text("حافظه داخلی", fontWeight = FontWeight.Bold)
+                        Text("حافظه داخلی گوشی", fontWeight = FontWeight.Bold)
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(formatBytes(info.used), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
@@ -1072,6 +1072,12 @@ private fun StorageOverview(info: StorageInfo) {
                 StorageLegend("اشغال‌شده", formatBytes(info.used), MaterialTheme.colorScheme.primary)
                 StorageLegend("فضای آزاد", formatBytes(info.free), MaterialTheme.colorScheme.secondary)
             }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "این آمار مربوط به حافظهٔ داخلی گوشی است و کارت حافظه یا پوشهٔ انتخاب‌شده را جداگانه اندازه‌گیری نمی‌کند.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -1495,7 +1501,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        Text("نسخه ۰٫۷٫۳", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("نسخه ۰٫۷٫۴", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("ساخته شده توسط mobin", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -1510,7 +1516,7 @@ private fun DetailLine(label: String, value: String) {
 }
 
 private fun readStorageInfo(): StorageInfo = runCatching {
-    val stat = StatFs(Environment.getDataDirectory().path)
+    val stat = StatFs(Environment.getExternalStorageDirectory().path)
     StorageInfo(stat.totalBytes, stat.availableBytes.coerceAtMost(stat.totalBytes))
 }.getOrDefault(StorageInfo(0L, 0L))
 
