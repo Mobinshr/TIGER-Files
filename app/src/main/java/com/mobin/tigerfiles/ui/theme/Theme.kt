@@ -8,24 +8,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFFB86B08),
+    primary = Color(0xFFAE6506),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFFFE6B3),
-    onPrimaryContainer = Color(0xFF452600),
-    secondary = Color(0xFF52677F),
+    primaryContainer = Color(0xFFFFE4B0),
+    onPrimaryContainer = Color(0xFF3D2500),
+    secondary = Color(0xFF4E657E),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFE5EDF5),
-    onSecondaryContainer = Color(0xFF1B2C40),
-    tertiary = Color(0xFFB14E35),
+    secondaryContainer = Color(0xFFE1EAF3),
+    onSecondaryContainer = Color(0xFF1A2B3E),
+    tertiary = Color(0xFFB64E37),
     onTertiary = Color(0xFFFFFFFF),
-    background = Color(0xFFEBEFF4),
-    onBackground = Color(0xFF151D28),
-    surface = Color(0xFFF8FAFC),
-    onSurface = Color(0xFF151D28),
-    surfaceVariant = Color(0xFFDDE5EE),
+    background = Color(0xFFE9EDF3),
+    onBackground = Color(0xFF141D29),
+    surface = Color(0xFFF7F9FC),
+    onSurface = Color(0xFF141D29),
+    surfaceVariant = Color(0xFFDCE4EE),
     onSurfaceVariant = Color(0xFF536174),
-    outline = Color(0xFF8291A4),
-    outlineVariant = Color(0xFFCBD4DF)
+    outline = Color(0xFF7E8DA2),
+    outlineVariant = Color(0xFFC9D3E0)
 )
 
 private val DarkColors = darkColorScheme(
@@ -54,8 +54,5 @@ fun TigerFilesTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        content = content
-    )
+    MaterialTheme(colorScheme = if (darkTheme) DarkColors else LightColors, content = content)
 }

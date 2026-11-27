@@ -17,6 +17,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -164,6 +165,11 @@ private fun TigerFilesApp() {
     val indexedFiles = remember(allFiles) { allFiles.associateBy { it.uri.toString() } }
     val favoriteFiles = favoriteUris.mapNotNull { indexedFiles[it] }
     val recentFiles = recentUris.mapNotNull { indexedFiles[it] }.distinctBy { it.uri.toString() }.take(8)
+    val dashboardCounts = remember(allFiles) {
+        FileCategory.values().associateWith { item -> allFiles.count { matchesCategory(it, item) } }
+    }
+    val dashboardFileCount = remember(allFiles) { allFiles.count { !it.isDirectory } }
+    val dashboardFolderCount = remember(allFiles) { allFiles.count { it.isDirectory } }
     val visibleFiles = when (screen) {
         AppScreen.FAVORITES -> favoriteFiles
         AppScreen.FILES -> {
@@ -313,7 +319,9 @@ private fun TigerFilesApp() {
         category = FileCategory.ALL
     }
 
-    Scaffold(
+    Box(Modifier.fillMaxSize()) {
+        TigerBackdrop(Modifier.matchParentSize())
+        Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -354,20 +362,35 @@ private fun TigerFilesApp() {
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), contentColor = MaterialTheme.colorScheme.onSurface, tonalElevation = 0.dp) {
-                AppScreen.values().forEach { item ->
-                    val icon = when (item) {
-                        AppScreen.HOME -> Icons.Default.Home
-                        AppScreen.FILES -> Icons.Default.Folder
-                        AppScreen.FAVORITES -> Icons.Default.Favorite
-                        AppScreen.SETTINGS -> Icons.Default.Settings
+            Surface(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(26.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                shadowElevation = 12.dp
+            ) {
+                NavigationBar(containerColor = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface, tonalElevation = 0.dp) {
+                    AppScreen.values().forEach { item ->
+                        val icon = when (item) {
+                            AppScreen.HOME -> Icons.Default.Home
+                            AppScreen.FILES -> Icons.Default.Folder
+                            AppScreen.FAVORITES -> Icons.Default.Favorite
+                            AppScreen.SETTINGS -> Icons.Default.Settings
+                        }
+                        NavigationBarItem(
+                            selected = screen == item,
+                            onClick = { screen = item; selectedUris.clear(); query = "" },
+                            icon = { Icon(icon, contentDescription = null) },
+                            label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
                     }
-                    NavigationBarItem(
-                        selected = screen == item,
-                        onClick = { screen = item; selectedUris.clear(); query = "" },
-                        icon = { Icon(icon, contentDescription = null) },
-                        label = { Text(item.label) }
-                    )
                 }
             }
         },
@@ -380,11 +403,12 @@ private fun TigerFilesApp() {
                 }) { Icon(Icons.Default.CreateNewFolder, contentDescription = "ایجاد فایل یا پوشه") }
             }
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = Color.Transparent
     ) { padding ->
         when (screen) {
             AppScreen.HOME -> HomeDashboard(
-                Modifier.padding(padding), rootFolder, remember { readStorageInfo() }, recentFiles, scanning,
+                Modifier.padding(padding), rootFolder, remember { readStorageInfo() }, recentFiles,
+                dashboardFileCount, dashboardFolderCount, dashboardCounts, scanning,
                 onChooseFolder = { folderPicker.launch(null) },
                 onOpenFiles = { screen = AppScreen.FILES; category = FileCategory.ALL },
                 onCategory = { selectCategory(it) },
@@ -433,6 +457,7 @@ private fun TigerFilesApp() {
                 onRescan = { refreshKey++ },
                 onClearRecents = { recentUris.clear(); prefs.edit().remove("recents").apply() }
             )
+        }
         }
     }
 
@@ -553,11 +578,39 @@ private fun TigerFilesApp() {
 }
 
 @Composable
+private fun TigerBackdrop(modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                listOf(scheme.background, scheme.background.copy(alpha = 0.96f), scheme.surfaceVariant.copy(alpha = 0.32f))
+            )
+        )
+    ) {
+        Box(
+            Modifier.align(Alignment.TopEnd).offset(x = 92.dp, y = (-112).dp).size(300.dp)
+                .background(Brush.radialGradient(listOf(scheme.primary.copy(alpha = 0.23f), Color.Transparent)), CircleShape)
+        )
+        Box(
+            Modifier.align(Alignment.BottomStart).offset(x = (-118).dp, y = 102.dp).size(310.dp)
+                .background(Brush.radialGradient(listOf(scheme.secondary.copy(alpha = 0.17f), Color.Transparent)), CircleShape)
+        )
+        Box(
+            Modifier.align(Alignment.CenterEnd).offset(x = 126.dp, y = 30.dp).size(210.dp)
+                .background(Brush.radialGradient(listOf(scheme.tertiary.copy(alpha = 0.09f), Color.Transparent)), CircleShape)
+        )
+    }
+}
+
+@Composable
 private fun HomeDashboard(
     modifier: Modifier,
     rootFolder: DocumentFile?,
     storageInfo: StorageInfo,
     recentFiles: List<DocumentFile>,
+    fileCount: Int,
+    folderCount: Int,
+    categoryCounts: Map<FileCategory, Int>,
     scanning: Boolean,
     onChooseFolder: () -> Unit,
     onOpenFiles: () -> Unit,
@@ -566,64 +619,70 @@ private fun HomeDashboard(
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(13.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)), colors = CardDefaults.cardColors(containerColor = Color.Transparent), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
-                Box(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), MaterialTheme.colorScheme.secondary.copy(alpha = 0.13f), MaterialTheme.colorScheme.surface.copy(alpha = 0.84f)))).padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("مدیریت فایل‌ها، سریع و مرتب", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            Spacer(Modifier.height(7.dp))
-                            Text(if (rootFolder == null) "برای شروع، حافظه یا یک پوشه را انتخاب کن" else "همه فایل‌هایت، منظم و یک‌جا", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            Spacer(Modifier.height(16.dp))
-                            Button(onClick = if (rootFolder == null) onChooseFolder else onOpenFiles, shape = RoundedCornerShape(14.dp), elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)) {
-                                Text(if (rootFolder == null) "انتخاب پوشه" else "مرور فایل‌ها")
-                                Spacer(Modifier.width(6.dp))
-                                Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                        }
-                        Surface(shape = RoundedCornerShape(23.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.54f), modifier = Modifier.size(76.dp), shadowElevation = 0.dp) {
-                            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.FolderCopy, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp)) }
-                        }
-                    }
-                }
-            }
+            DashboardHero(
+                rootFolder = rootFolder,
+                fileCount = fileCount,
+                folderCount = folderCount,
+                scanning = scanning,
+                onAction = if (rootFolder == null) onChooseFolder else onOpenFiles
+            )
         }
         item { StorageOverview(storageInfo) }
-        item { SectionHeading("دسترسی سریع", "دسته‌بندی فایل‌ها") }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { SectionHeading("دسترسی سریع", "دسته‌بندی فایل‌ها") }
+                Text("۶ دسته", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            }
+        }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CategoryTile(FileCategory.IMAGES, Modifier.weight(1f), onCategory)
-                    CategoryTile(FileCategory.VIDEOS, Modifier.weight(1f), onCategory)
+                    CategoryTile(FileCategory.IMAGES, categoryCounts[FileCategory.IMAGES] ?: 0, Modifier.weight(1f), onCategory)
+                    CategoryTile(FileCategory.VIDEOS, categoryCounts[FileCategory.VIDEOS] ?: 0, Modifier.weight(1f), onCategory)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CategoryTile(FileCategory.AUDIO, Modifier.weight(1f), onCategory)
-                    CategoryTile(FileCategory.DOCUMENTS, Modifier.weight(1f), onCategory)
+                    CategoryTile(FileCategory.AUDIO, categoryCounts[FileCategory.AUDIO] ?: 0, Modifier.weight(1f), onCategory)
+                    CategoryTile(FileCategory.DOCUMENTS, categoryCounts[FileCategory.DOCUMENTS] ?: 0, Modifier.weight(1f), onCategory)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CategoryTile(FileCategory.APK, Modifier.weight(1f), onCategory)
-                    CategoryTile(FileCategory.ARCHIVES, Modifier.weight(1f), onCategory)
+                    CategoryTile(FileCategory.APK, categoryCounts[FileCategory.APK] ?: 0, Modifier.weight(1f), onCategory)
+                    CategoryTile(FileCategory.ARCHIVES, categoryCounts[FileCategory.ARCHIVES] ?: 0, Modifier.weight(1f), onCategory)
                 }
             }
         }
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    SectionHeading("اخیراً بازشده", "دسترسی سریع به فایل‌های اخیر")
-                }
-                if (scanning) Text("در حال بررسی…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f)) { SectionHeading("اخیراً بازشده", "فایل‌هایی که آخرین بار استفاده کردی") }
+                if (scanning) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
             }
         }
         if (recentFiles.isEmpty()) {
             item {
-                Card(shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))) {
-                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(10.dp))
-                        Text("فایل‌هایی که باز می‌کنی اینجا نمایش داده می‌شوند", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Surface(
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f))
+                ) {
+                    Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(15.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        Spacer(Modifier.width(13.dp))
+                        Column {
+                            Text("هنوز فایلی باز نکردی", fontWeight = FontWeight.SemiBold)
+                            Text("فایل‌های اخیرت بعد از اولین استفاده اینجا می‌آیند", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -632,54 +691,227 @@ private fun HomeDashboard(
                 FileRowCard(file, false, false, false, { onOpenFile(file) }, {}, {})
             }
         }
-        item { Text("ساخته شده با تمرکز روی سرعت و حریم خصوصی", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item {
+            Text(
+                "TIGER FILES  •  ساخته شده برای مدیریت ساده‌تر",
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
 @Composable
-private fun StorageOverview(info: StorageInfo) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.64f)), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f), modifier = Modifier.size(44.dp)) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.secondary) }
+private fun DashboardHero(
+    rootFolder: DocumentFile?,
+    fileCount: Int,
+    folderCount: Int,
+    scanning: Boolean,
+    onAction: () -> Unit
+) {
+    val gold = Color(0xFFFFB52E)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(30.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+    ) {
+        Box(
+            Modifier.fillMaxWidth()
+                .background(Brush.linearGradient(listOf(Color(0xFF101827), Color(0xFF1D3045), Color(0xFF55390F))))
+                .padding(20.dp)
+        ) {
+            Box(Modifier.align(Alignment.TopEnd).offset(x = 72.dp, y = (-82).dp).size(190.dp).border(1.dp, Color.White.copy(alpha = 0.10f), CircleShape))
+            Box(Modifier.align(Alignment.TopEnd).offset(x = 42.dp, y = (-50).dp).size(130.dp).border(1.dp, gold.copy(alpha = 0.18f), CircleShape))
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("TIGER  /  FILE MANAGER", style = MaterialTheme.typography.labelSmall, color = gold, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(9.dp))
+                        Text(
+                            "همه‌چیز،\nسر جای خودش.",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            lineHeight = MaterialTheme.typography.headlineSmall.lineHeight
+                        )
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            if (rootFolder == null) "برای شروع، پوشه‌ای از حافظه انتخاب کن" else "مدیریت فایل‌ها در یک فضای منظم و سریع",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.72f)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        modifier = Modifier.size(82.dp),
+                        shape = RoundedCornerShape(25.dp),
+                        color = Color.White.copy(alpha = 0.09f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.FolderCopy, contentDescription = null, tint = gold, modifier = Modifier.size(43.dp))
+                        }
+                    }
                 }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("حافظه دستگاه", fontWeight = FontWeight.Bold)
-                    Text("نمای کلی فضای ذخیره‌سازی", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(20.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HeroMetric("فایل‌ها", fileCount.toString(), Modifier.weight(1f))
+                    HeroMetric("پوشه‌ها", folderCount.toString(), Modifier.weight(1f))
+                    HeroMetric("وضعیت", if (scanning) "در حال اسکن" else if (rootFolder == null) "آماده" else "فعال", Modifier.weight(1f))
                 }
-                Text(formatBytes(info.used), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            }
-            Spacer(Modifier.height(14.dp))
-            LinearProgressIndicator(progress = info.fraction.coerceIn(0f, 1f), modifier = Modifier.fillMaxWidth().height(10.dp).clip(CircleShape), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("استفاده‌شده " + formatBytes(info.used), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("آزاد " + formatBytes(info.free), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = onAction,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(15.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = gold, contentColor = Color(0xFF151B25)),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                ) {
+                    Icon(if (rootFolder == null) Icons.Default.FolderOpen else Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (rootFolder == null) "انتخاب پوشه اصلی" else "رفتن به فایل‌ها", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(17.dp))
+                }
+                if (rootFolder != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "پوشه فعال: " + (rootFolder.name ?: "حافظه انتخاب‌شده"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.64f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CategoryTile(category: FileCategory, modifier: Modifier, onClick: (FileCategory) -> Unit) {
-    Card(modifier = modifier, onClick = { onClick(category) }, shape = RoundedCornerShape(19.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), modifier = Modifier.size(42.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(category.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) }
+private fun HeroMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = Color.White.copy(alpha = 0.08f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+    ) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.68f))
+            Spacer(Modifier.height(3.dp))
+            Text(value, style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun StorageOverview(info: StorageInfo) {
+    val fraction = info.fraction.coerceIn(0f, 1f)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(25.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.66f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(Modifier.padding(17.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text("حافظه داخلی", fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(formatBytes(info.used), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                    Text("از " + formatBytes(info.total) + " استفاده شده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(76.dp)) {
+                    CircularProgressIndicator(
+                        progress = fraction,
+                        modifier = Modifier.fillMaxSize(),
+                        strokeWidth = 6.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(String.format(Locale.US, "%.0f%%", fraction * 100f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                        Text("مصرف", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
-            Spacer(Modifier.width(10.dp))
-            Text(category.label, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-            Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.height(17.dp))
+            LinearProgressIndicator(
+                progress = fraction,
+                modifier = Modifier.fillMaxWidth().height(7.dp).clip(CircleShape),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                StorageLegend("اشغال‌شده", formatBytes(info.used), MaterialTheme.colorScheme.primary)
+                StorageLegend("فضای آزاد", formatBytes(info.free), MaterialTheme.colorScheme.secondary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StorageLegend(label: String, value: String, tint: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(7.dp).clip(CircleShape).background(tint))
+        Spacer(Modifier.width(6.dp))
+        Column {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+private fun categoryTint(category: FileCategory): Color = when (category) {
+    FileCategory.IMAGES -> Color(0xFFE66A91)
+    FileCategory.VIDEOS -> Color(0xFF9275E8)
+    FileCategory.AUDIO -> Color(0xFF4FAF83)
+    FileCategory.DOCUMENTS -> Color(0xFF4F94D5)
+    FileCategory.APK -> Color(0xFFE4A33A)
+    FileCategory.ARCHIVES -> Color(0xFF6E8EAB)
+    else -> Color(0xFFFFB52E)
+}
+
+@Composable
+private fun CategoryTile(category: FileCategory, count: Int, modifier: Modifier, onClick: (FileCategory) -> Unit) {
+    val tint = categoryTint(category)
+    Card(
+        modifier = modifier,
+        onClick = { onClick(category) },
+        shape = RoundedCornerShape(21.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(13.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(13.dp), color = tint.copy(alpha = 0.16f), modifier = Modifier.size(40.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Icon(category.icon, contentDescription = null, tint = tint, modifier = Modifier.size(21.dp)) }
+                }
+                Spacer(Modifier.weight(1f))
+                Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.size(17.dp))
+            }
+            Spacer(Modifier.height(11.dp))
+            Text(category.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(2.dp))
+            Text("$count مورد", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
 private fun SectionHeading(title: String, subtitle: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
         Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -735,11 +967,21 @@ private fun BrowserScreen(
         return
     }
     Column(modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(10.dp))
+        if (currentFolder != null) {
+            Text(
+                currentFolder.name ?: "حافظه",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
         TextField(
             value = query,
             onValueChange = onQuery,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f), RoundedCornerShape(18.dp)),
             singleLine = true,
             placeholder = { Text("جستجو در پوشه‌های انتخاب‌شده") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
@@ -883,10 +1125,10 @@ private fun FileRowCard(
     val folder = file.isDirectory
     Card(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        shape = RoundedCornerShape(19.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-        colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.17f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.58f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)),
+        colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.66f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
             FileIconBox(fileIcon(file), folder)
@@ -1015,7 +1257,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        Text("TIGER Files  •  نسخه 0.5.0", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("TIGER Files  •  نسخه 0.6.0", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("ساخته شده توسط mobin", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
