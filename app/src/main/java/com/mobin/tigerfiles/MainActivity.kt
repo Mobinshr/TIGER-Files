@@ -251,15 +251,18 @@ private fun TigerFilesApp() {
         } else {
             recordRecent(file)
             if (isEditableTextFile(file)) {
-                if (file.length() > MAX_TEXT_EDITOR_BYTES) {
-                    Toast.makeText(context, "این فایل برای ویرایش داخلی بیش از یک مگابایت است", Toast.LENGTH_LONG).show()
-                    return
-                }
-                editorFile = file
-                editorText = ""
-                editorLoading = true
-                showEditorDialog = true
                 scope.launch {
+                    val fileSize = withContext(Dispatchers.IO) {
+                        runCatching { file.length() }.getOrDefault(0L)
+                    }
+                    if (fileSize > MAX_TEXT_EDITOR_BYTES) {
+                        Toast.makeText(context, "این فایل برای ویرایش داخلی بیش از یک مگابایت است", Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
+                    editorFile = file
+                    editorText = ""
+                    editorLoading = true
+                    showEditorDialog = true
                     val loaded = withContext(Dispatchers.IO) {
                         runCatching {
                             context.contentResolver.openInputStream(file.uri)
