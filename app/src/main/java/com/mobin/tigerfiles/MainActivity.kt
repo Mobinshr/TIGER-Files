@@ -110,6 +110,7 @@ private fun TigerFilesApp() {
     var dashboardFileCount by remember { mutableIntStateOf(0) }
     var dashboardFolderCount by remember { mutableIntStateOf(0) }
     var dashboardLargestFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var dashboardScanLimited by remember { mutableStateOf(false) }
     val selectedUris = remember { mutableStateListOf<String>() }
     val favoriteUris = remember { mutableStateListOf<String>().apply { addAll(prefs.getStringSet("favorites", emptySet()).orEmpty()) } }
     val recentUris = remember { mutableStateListOf<String>().apply { addAll(prefs.getString("recents", "").orEmpty().split("\n").filter { it.isNotBlank() }) } }
@@ -163,6 +164,7 @@ private fun TigerFilesApp() {
             dashboardFileCount = summary.fileCount
             dashboardFolderCount = summary.folderCount
             dashboardLargestFiles = summary.largestFiles
+            dashboardScanLimited = summary.scanLimited
         } finally {
             scanning = false
         }
@@ -264,14 +266,15 @@ private fun TigerFilesApp() {
         }
     }
     fun openDocument(file: DocumentFile) {
-        if (file.isDirectory) {
+        if (cachedIsDirectory(file)) {
             navigateToFolder(file)
         } else {
             recordRecent(file)
             if (isEditableTextFile(file)) {
                 scope.launch {
                     val fileSize = withContext(Dispatchers.IO) {
-                        runCatching { file.length() }.getOrDefault(0L)
+                        cachedLength(file).takeIf { it > 0L }
+                            ?: runCatching { file.length() }.getOrDefault(0L)
                     }
                     if (fileSize > MAX_TEXT_EDITOR_BYTES) {
                         Toast.makeText(context, "این فایل برای ویرایش داخلی بیش از یک مگابایت است", Toast.LENGTH_LONG).show()
@@ -283,8 +286,21 @@ private fun TigerFilesApp() {
                     showEditorDialog = true
                     val loaded = withContext(Dispatchers.IO) {
                         runCatching {
-                            context.contentResolver.openInputStream(file.uri)
-                                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                            val input = context.contentResolver.openInputStream(file.uri)
+                                ?: throw IOException("Cannot open text file")
+                            input.bufferedReader(Charsets.UTF_8).use { reader ->
+                                val output = StringBuilder()
+                                val buffer = CharArray(8192)
+                                while (true) {
+                                    val count = reader.read(buffer)
+                                    if (count < 0) break
+                                    if (output.length + count > MAX_TEXT_EDITOR_CHARS) {
+                                        throw IOException("Text file exceeds editor limit")
+                                    }
+                                    output.append(buffer, 0, count)
+                                }
+                                output.toString()
+                            }
                         }
                     }
                     editorLoading = false
@@ -299,7 +315,7 @@ private fun TigerFilesApp() {
                 }
             } else {
                 val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(file.uri, file.type ?: mimeFromName(file.name))
+                    setDataAndType(file.uri, cachedMimeType(file).ifBlank { mimeFromName(cachedName(file)) })
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 try {
@@ -340,7 +356,7 @@ private fun TigerFilesApp() {
             val uris = ArrayList<Uri>().apply { addAll(files.map { it.uri }) }
             val intent = if (uris.size == 1) {
                 Intent(Intent.ACTION_SEND).apply {
-                    type = files.first().type ?: "*/*"
+                    type = cachedMimeType(files.first()).ifBlank { "*/*" }
                     putExtra(Intent.EXTRA_STREAM, uris.first())
                     clipData = ClipData.newUri(context.contentResolver, "فایل", uris.first())
                 }
@@ -370,6 +386,7 @@ private fun TigerFilesApp() {
         }
     }
     fun copyOrCutSelection(cut: Boolean) {
+        if (busy) return
         clipboardFiles = selectedFiles.toList()
         clipboardIsCut = cut
         selectedUris.clear()
@@ -571,6 +588,7 @@ private fun TigerFilesApp() {
                 selectedUris.toSet(),
                 visibleFiles.isNotEmpty() && visibleFiles.all { selectedUris.contains(it.uri.toString()) },
                 selectedUris.size, clipboardFiles.size, clipboardIsCut, busy || scanning || loadingFolder || preparingList,
+                dashboardScanLimited,
                 onChooseFolder = { folderPicker.launch(null) },
                 onOpen = { openDocument(it) },
                 onLongSelect = { if (!selectedUris.contains(it.uri.toString())) selectedUris.add(it.uri.toString()) },
@@ -735,7 +753,7 @@ private fun TigerFilesApp() {
             title = { Text("جزئیات فایل") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DetailLine("نام", file.name ?: "بدون نام")
+                    DetailLine("نام", cachedName(file).ifBlank { "بدون نام" })
                     DetailLine("نوع", friendlyFileType(file))
                     DetailLine("حجم", if (file.isDirectory) "—" else formatBytes(cachedLength(file)))
                     DetailLine("آخرین تغییر", if (cachedLastModified(file) > 0L) DateFormat.getDateTimeInstance().format(Date(cachedLastModified(file))) else "نامشخص")
@@ -1106,6 +1124,7 @@ private fun BrowserScreen(
     clipboardCount: Int,
     clipboardIsCut: Boolean,
     busy: Boolean,
+    scanLimited: Boolean,
     onChooseFolder: () -> Unit,
     onOpen: (DocumentFile) -> Unit,
     onLongSelect: (DocumentFile) -> Unit,
@@ -1207,6 +1226,14 @@ private fun BrowserScreen(
                 }
             }
             TextButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("به‌روزرسانی") }
+        }
+        if (scanLimited && (query.isNotBlank() || category != FileCategory.ALL)) {
+            Text(
+                "برای حفظ سرعت، جست‌وجوی سراسری تا سقف ۵۰٬۰۰۰ مورد اول را پوشش می‌دهد.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 3.dp)
+            )
         }
         if (files.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -1507,7 +1534,9 @@ private fun scanFolderTree(root: DocumentFile, maxDepth: Int, maxItems: Int): Fo
         }
         val folderKey = runCatching { folder.uri.toString() }.getOrDefault("")
         if (!visitedFolders.add(folderKey)) return
-        val children = runCatching { folder.listFiles().toList() }.getOrDefault(emptyList())
+        val childrenResult = runCatching { folder.listFiles().toList() }
+        if (childrenResult.isFailure) limited = true
+        val children = childrenResult.getOrDefault(emptyList())
         for (child in children) {
             if (result.size >= maxItems) {
                 limited = true
@@ -1739,13 +1768,13 @@ private fun cacheDocumentMetadata(file: DocumentFile) {
 private fun cachedMetadata(file: DocumentFile): CachedDocumentMetadata? =
     documentMetadataCache[file.uri.toString()]
 
-private fun cachedName(file: DocumentFile): String =
+internal fun cachedName(file: DocumentFile): String =
     cachedMetadata(file)?.name ?: runCatching { file.name }.getOrNull().orEmpty()
 
-private fun cachedIsDirectory(file: DocumentFile): Boolean =
+internal fun cachedIsDirectory(file: DocumentFile): Boolean =
     cachedMetadata(file)?.isDirectory ?: runCatching { file.isDirectory }.getOrDefault(false)
 
-private fun cachedMimeType(file: DocumentFile): String =
+internal fun cachedMimeType(file: DocumentFile): String =
     cachedMetadata(file)?.mimeType ?: runCatching { file.type }.getOrNull().orEmpty()
 
 private fun cachedLength(file: DocumentFile): Long =
