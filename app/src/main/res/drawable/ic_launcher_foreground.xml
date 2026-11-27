@@ -4,39 +4,31 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Golden folder silhouette -->
+
+    <!-- A clean folder mark, framed for the adaptive icon safe area -->
     <path
-        android:fillColor="#FFB51B"
-        android:pathData="M14,57 Q14,52 20,52 H43 L50,59 H88 Q94,59 94,65 V88 Q94,94 88,94 H20 Q14,94 14,88 Z" />
+        android:fillColor="#C9650C"
+        android:pathData="M17,36 C17,31 21,28 26,28 H44 L52,36 H84 C90,36 94,40 94,46 V76 C94,82 90,86 84,86 H24 C19,86 15,82 15,77 Z" />
     <path
-        android:fillColor="#FFD15A"
-        android:pathData="M14,65 Q14,61 20,61 H88 Q94,61 94,66 V70 H14 Z" />
-    <!-- Tiger ears and head -->
+        android:fillColor="#FFB52E"
+        android:pathData="M13,45 C13,40 17,37 22,37 H87 C92,37 96,41 96,46 V79 C96,84 92,88 87,88 H21 C16,88 12,84 12,79 Z" />
     <path
-        android:fillColor="#F28C00"
-        android:pathData="M24,35 L20,17 Q34,19 42,27 Q54,20 66,27 Q74,19 88,17 L84,39 Q91,51 83,66 Q74,82 54,84 Q34,82 25,66 Q17,51 24,35 Z" />
+        android:fillColor="#FFD978"
+        android:pathData="M20,43 H87 C90,43 92,45 92,48 V51 H17 V48 C17,45 18,43 20,43 Z" />
+
+    <!-- Three bold tiger-stripe cuts -->
     <path
-        android:fillColor="#FFF1D4"
-        android:pathData="M24,25 Q32,25 39,33 L31,43 Z M84,25 Q76,25 69,33 L77,43 Z M29,55 Q38,47 48,55 Q45,69 34,68 Z M79,55 Q70,47 60,55 Q63,69 74,68 Z M43,67 Q54,61 65,67 Q62,79 54,80 Q46,79 43,67 Z" />
-    <!-- Bold black tiger stripes -->
+        android:fillColor="#111A28"
+        android:pathData="M28,54 C40,51 51,46 62,39 C57,53 45,61 27,65 C31,61 32,57 28,54 Z" />
     <path
-        android:fillColor="#15191D"
-        android:pathData="M26,31 L43,39 L35,47 L27,43 Z M82,31 L65,39 L73,47 L81,43 Z M47,27 L54,43 L61,27 L58,49 L54,54 L50,49 Z M31,49 L43,54 L38,61 L30,58 Z M77,49 L65,54 L70,61 L78,58 Z M44,20 L48,34 L42,30 Z M64,20 L60,34 L66,30 Z" />
-    <!-- Eyes -->
+        android:fillColor="#111A28"
+        android:pathData="M48,68 C61,62 72,53 82,43 C77,60 65,72 47,78 C51,74 52,71 48,68 Z" />
     <path
-        android:fillColor="#FFC928"
-        android:pathData="M34,54 Q42,47 49,55 Q43,62 35,60 Z M74,54 Q66,47 59,55 Q65,62 73,60 Z" />
+        android:fillColor="#111A28"
+        android:pathData="M70,80 C80,73 87,63 92,52 C92,68 84,81 70,85 C72,83 72,81 70,80 Z" />
+
+    <!-- Small metallic highlight -->
     <path
-        android:fillColor="#15191D"
-        android:pathData="M41,53 L46,56 L42,60 Z M67,53 L62,56 L66,60 Z" />
-    <!-- Muzzle, nose and mouth -->
-    <path
-        android:fillColor="#FFF7E8"
-        android:pathData="M42,64 Q48,60 54,66 Q60,60 66,64 Q64,74 54,76 Q44,74 42,64 Z" />
-    <path
-        android:fillColor="#C9432D"
-        android:pathData="M49,65 Q54,62 59,65 Q57,70 54,70 Q51,70 49,65 Z" />
-    <path
-        android:fillColor="#15191D"
-        android:pathData="M54,70 V75 M54,75 Q49,80 45,76 M54,75 Q59,80 63,76" />
+        android:fillColor="#FFF0C2"
+        android:pathData="M21,46 C21,44 23,43 26,43 H42 C39,44 36,46 33,47 H21 Z" />
 </vector>
