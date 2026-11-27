@@ -46,7 +46,7 @@ jobs:
         run: gradle :app:compileDebugKotlin
       - name: Restore and verify stable signing key
         env:
-          ANDROID_DEBUG_KEYSTORE_BASE64: ${ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           EXPECTED_SHA1="85EFC050123C89D9DA54763C70E6359DE107EAB2"
@@ -102,8 +102,8 @@ jobs:
           path: release-assets
       - name: Publish latest APK
         env:
-          GH_TOKEN: ${ github.token }}
-          REPOSITORY: ${ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           VERSION_NAME=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts)
