@@ -581,7 +581,7 @@ private fun TigerFilesApp() {
             AppScreen.HOME -> HomeDashboard(
                 Modifier.padding(padding), rootFolder, remember { readStorageInfo() }, recentFiles,
                 dashboardLargestFiles,
-                dashboardFileCount, dashboardFolderCount, dashboardCounts, scanning,
+                dashboardFileCount, dashboardFolderCount, dashboardCounts, scanning, dashboardScanLimited,
                 onChooseFolder = { folderPicker.launch(null) },
                 onOpenFiles = { screen = AppScreen.FILES; category = FileCategory.ALL },
                 onCategory = { selectCategory(it) },
@@ -812,6 +812,7 @@ private fun HomeDashboard(
     folderCount: Int,
     categoryCounts: Map<FileCategory, Int>,
     scanning: Boolean,
+    scanLimited: Boolean,
     onChooseFolder: () -> Unit,
     onOpenFiles: () -> Unit,
     onCategory: (FileCategory) -> Unit,
@@ -852,6 +853,15 @@ private fun HomeDashboard(
                     CategoryTile(FileCategory.APK, categoryCounts[FileCategory.APK] ?: 0, Modifier.weight(1f), onCategory)
                     CategoryTile(FileCategory.ARCHIVES, categoryCounts[FileCategory.ARCHIVES] ?: 0, Modifier.weight(1f), onCategory)
                 }
+            }
+        }
+        if (scanLimited) {
+            item {
+                Text(
+                    "اسکن به‌دلیل محدودیت ایمنی ممکن است همهٔ فایل‌های پوشه‌های بسیار بزرگ یا عمیق را پوشش نداده باشد.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         item {
@@ -1246,7 +1256,7 @@ private fun BrowserScreen(
         }
         if (scanLimited && (query.isNotBlank() || category != FileCategory.ALL)) {
             Text(
-                "برای حفظ سرعت، جست‌وجوی سراسری تا سقف ۵۰٬۰۰۰ مورد اول را پوشش می‌دهد.",
+                "به‌دلیل محدودیت ایمنی، جست‌وجوی سراسری ممکن است همهٔ فایل‌های پوشه‌های بسیار بزرگ یا عمیق را پوشش ندهد.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 3.dp)
