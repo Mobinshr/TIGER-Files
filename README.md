@@ -5,7 +5,7 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 ## App details
 
 - Application ID: `com.mobin.tigerfiles`
-- Version: **0.7.1**
+- Version: **0.7.3**
 - Minimum Android: **Android 10 (API 29)**
 - Target SDK: 35
 - Persian RTL interface with automatic system light/dark theme
@@ -19,7 +19,7 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 - Optimized release APK with R8 code shrinking and Android resource shrinking
 - Developer-only Compose preview/tooling libraries excluded from the installed app
 - Browse folders and files, with grid and list layouts
-- Recursive search across the selected folder tree
+- Recursive search across the selected folder tree (up to 50,000 entries and depth 32; the app shows a notice if the safety limit is reached)
 - Filter images, videos, audio, documents, APKs, archives and folders
 - Sort by name, size or modified date
 - Multi-select files and folders
@@ -32,11 +32,11 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 - Extract ZIP archives with path-traversal protection and extraction size limits
 - Sort by file type and inspect the five largest files on the dashboard
 - Persistent access to the selected folder
-- Folder enumeration is performed on a background dispatcher to keep navigation responsive
+- Folder enumeration, filtering and sorting are performed off the UI thread; cached metadata avoids repeated storage-provider queries
 - Create new folders and empty text/code files
 - Select all visible items and navigate through clickable folder breadcrumbs
 - Safer recursive folder copy with self/descendant-copy protection
 
 ## Build and signing
 
-GitHub Actions builds the debug APK and publishes the latest successful build as the `latest` release. The workflow verifies the stable signing certificate and reads the version directly from Gradle configuration.
+GitHub Actions builds the optimized signed release APK and publishes it as the `latest` release. The workflow verifies the stable signing certificate and reads the version directly from Gradle configuration.
