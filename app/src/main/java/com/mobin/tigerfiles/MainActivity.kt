@@ -132,6 +132,11 @@ private fun TigerFilesApp() {
     val scope = rememberCoroutineScope()
     val currentFolder = pathStack.lastOrNull()
 
+    fun refreshFileData() {
+        documentMetadataCache.clear()
+        refreshKey++
+    }
+
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             runCatching {
@@ -149,7 +154,7 @@ private fun TigerFilesApp() {
                     query = ""
                     category = FileCategory.ALL
                     screen = AppScreen.HOME
-                    refreshKey++
+                    refreshFileData()
                 }
             }.onFailure { Toast.makeText(context, "دسترسی به پوشه انتخاب‌شده ممکن نبود", Toast.LENGTH_SHORT).show() }
         }
@@ -344,7 +349,7 @@ private fun TigerFilesApp() {
                 showEditorDialog = false
                 editorFile = null
                 Toast.makeText(context, "تغییرات ذخیره شد", Toast.LENGTH_SHORT).show()
-                refreshKey++
+                refreshFileData()
             } else {
                 Toast.makeText(context, "ذخیره‌سازی انجام نشد", Toast.LENGTH_SHORT).show()
             }
@@ -381,7 +386,7 @@ private fun TigerFilesApp() {
             val removed = withContext(Dispatchers.IO) { targets.count { runCatching { it.delete() }.getOrDefault(false) } }
             busy = false
             selectedUris.clear()
-            refreshKey++
+            refreshFileData()
             Toast.makeText(context, "$removed مورد حذف شد", Toast.LENGTH_SHORT).show()
         }
     }
@@ -422,7 +427,7 @@ private fun TigerFilesApp() {
             busy = false
             clipboardFiles = result.second
             if (clipboardFiles.isEmpty()) clipboardIsCut = false
-            refreshKey++
+            refreshFileData()
             val (completed, failed, sourceDeleteFailed) = result.first
             val message = buildString {
                 append("$completed مورد کپی شد")
@@ -446,7 +451,7 @@ private fun TigerFilesApp() {
             busy = false
             if (archive != null) {
                 selectedUris.clear()
-                refreshKey++
+                refreshFileData()
                 Toast.makeText(context, "فایل فشرده ساخته شد", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "فشرده‌سازی انجام نشد؛ فضای خالی و دسترسی پوشه را بررسی کن", Toast.LENGTH_LONG).show()
@@ -471,7 +476,7 @@ private fun TigerFilesApp() {
             busy = false
             if (extracted != null) {
                 selectedUris.clear()
-                refreshKey++
+                refreshFileData()
                 Toast.makeText(context, "${extracted.second} فایل استخراج شد", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "استخراج انجام نشد؛ فایل ZIP ممکن است خراب یا بیش از حد بزرگ باشد", Toast.LENGTH_LONG).show()
@@ -523,7 +528,7 @@ private fun TigerFilesApp() {
                             }
                         }
                     }
-                    IconButton(onClick = { refreshKey++ }) { Icon(Icons.Default.Refresh, contentDescription = "تازه‌سازی") }
+                    IconButton(onClick = { refreshFileData() }) { Icon(Icons.Default.Refresh, contentDescription = "تازه‌سازی") }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background, scrolledContainerColor = MaterialTheme.colorScheme.surface)
             )
@@ -598,9 +603,9 @@ private fun TigerFilesApp() {
                 onFavorite = { selectedFiles.forEach { file -> toggleFavorite(file) }; selectedUris.clear() },
                 onShare = { shareFiles(selectedFiles) },
                 onDelete = { showDeleteDialog = true },
-                onRename = { nameInput = selectedFiles.singleOrNull()?.name.orEmpty(); showRenameDialog = true },
+                onRename = { nameInput = selectedFiles.singleOrNull()?.let { cachedName(it) }.orEmpty(); showRenameDialog = true },
                 onPaste = { pasteClipboard() },
-                onRefresh = { refreshKey++ },
+                onRefresh = { refreshFileData() },
                 onClearSelection = { selectedUris.clear() },
                 onZip = { compressSelectedFiles() },
                 onExtract = { extractSelectedZip() },
@@ -625,7 +630,7 @@ private fun TigerFilesApp() {
                 Modifier.padding(padding), rootFolder, showHidden,
                 onShowHidden = { showHidden = it; prefs.edit().putBoolean("show_hidden", it).apply() },
                 onChooseFolder = { folderPicker.launch(null) },
-                onRescan = { refreshKey++ },
+                onRescan = { refreshFileData() },
                 onClearRecents = { recentUris.clear(); prefs.edit().remove("recents").apply() }
             )
         }
@@ -697,7 +702,7 @@ private fun TigerFilesApp() {
                             when (result) {
                                 1 -> {
                                     Toast.makeText(context, if (makeFile) "فایل ساخته شد" else "پوشه ساخته شد", Toast.LENGTH_SHORT).show()
-                                    refreshKey++
+                                    refreshFileData()
                                 }
                                 0 -> Toast.makeText(context, "این نام از قبل وجود دارد", Toast.LENGTH_SHORT).show()
                                 else -> Toast.makeText(context, "ایجاد مورد جدید انجام نشد", Toast.LENGTH_SHORT).show()
@@ -728,7 +733,7 @@ private fun TigerFilesApp() {
                             busy = true
                             val ok = withContext(Dispatchers.IO) {
                                 runCatching {
-                                    val parent = currentFolder
+                                    val parent = runCatching { target.parentFile }.getOrNull()
                                     when {
                                         cachedName(target) == name -> true
                                         parent != null && parent.findFile(name) != null -> false
@@ -739,7 +744,7 @@ private fun TigerFilesApp() {
                             busy = false
                             Toast.makeText(context, if (ok) "نام فایل تغییر کرد" else "تغییر نام انجام نشد", Toast.LENGTH_SHORT).show()
                             selectedUris.clear()
-                            if (ok) refreshKey++
+                            if (ok) refreshFileData()
                         }
                     } else if (name.isNotEmpty()) {
                         Toast.makeText(context, "نام جدید معتبر نیست", Toast.LENGTH_SHORT).show()
@@ -1770,12 +1775,14 @@ private val documentMetadataCache = ConcurrentHashMap<String, CachedDocumentMeta
 
 private fun cacheDocumentMetadata(file: DocumentFile) {
     val key = file.uri.toString()
-    val directory = runCatching { file.isDirectory }.getOrDefault(false)
-    val name = runCatching { file.name }.getOrNull().orEmpty()
-    val mimeType = if (directory) "" else runCatching { file.type }.getOrNull().orEmpty()
-    val size = if (directory) 0L else runCatching { file.length() }.getOrDefault(0L)
-    val modified = runCatching { file.lastModified() }.getOrDefault(0L)
-    documentMetadataCache[key] = CachedDocumentMetadata(name, directory, mimeType, size, modified)
+    documentMetadataCache.computeIfAbsent(key) {
+        val directory = runCatching { file.isDirectory }.getOrDefault(false)
+        val name = runCatching { file.name }.getOrNull().orEmpty()
+        val mimeType = if (directory) "" else runCatching { file.type }.getOrNull().orEmpty()
+        val size = if (directory) 0L else runCatching { file.length() }.getOrDefault(0L)
+        val modified = runCatching { file.lastModified() }.getOrDefault(0L)
+        CachedDocumentMetadata(name, directory, mimeType, size, modified)
+    }
 }
 
 private fun cachedMetadata(file: DocumentFile): CachedDocumentMetadata? =
