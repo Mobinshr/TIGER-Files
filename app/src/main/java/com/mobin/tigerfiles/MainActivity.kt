@@ -588,7 +588,8 @@ private fun TigerFilesApp() {
                 onOpenFile = { openDocument(it) }
             )
             AppScreen.FILES -> BrowserScreen(
-                Modifier.padding(padding), rootFolder, currentFolder, pathStack.toList(), visibleFiles,
+                Modifier.padding(padding), rootFolder, currentFolder, pathStack.toList(),
+                if (preparingList || loadingFolder) emptyList() else visibleFiles,
                 query, { query = it; selectedUris.clear() }, category, { category = it; selectedUris.clear() }, gridMode,
                 selectedUris.toSet(),
                 visibleFiles.isNotEmpty() && visibleFiles.all { selectedUris.contains(it.uri.toString()) },
