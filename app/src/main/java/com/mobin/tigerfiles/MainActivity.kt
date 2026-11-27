@@ -1092,9 +1092,10 @@ private fun isSameOrInside(candidate: DocumentFile, ancestor: DocumentFile): Boo
 
     var parent = runCatching { candidate.parentFile }.getOrNull()
     var depth = 0
-    while (parent != null && depth++ < 64) {
-        if (parent.uri == ancestor.uri) return true
-        parent = runCatching { parent.parentFile }.getOrNull()
+    while (depth++ < 64) {
+        val current = parent ?: break
+        if (current.uri == ancestor.uri) return true
+        parent = runCatching { current.parentFile }.getOrNull()
     }
     return false
 }
