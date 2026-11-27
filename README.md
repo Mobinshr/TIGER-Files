@@ -1,10 +1,11 @@
-# TIGER Files
+# File Manager
 
 A native Android file manager built with Kotlin and Jetpack Compose.
 
 ## App details
 
-- Application ID: `com.mobin.tigerfiles`
+- Application name: **File Manager**
+- Application ID: `com.mobin.tigerfiles` (kept unchanged to preserve app identity and update compatibility)
 - Version: **0.7.5**
 - Minimum Android: **Android 10 (API 29)**
 - Target SDK: 35
@@ -40,7 +41,6 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 ## Build and signing
 
 GitHub Actions builds the optimized signed release APK and publishes it as the `latest` release. The workflow verifies the stable signing certificate and reads the version directly from Gradle configuration.
-
 
 ## Memory and scan limits (0.7.5)
 
