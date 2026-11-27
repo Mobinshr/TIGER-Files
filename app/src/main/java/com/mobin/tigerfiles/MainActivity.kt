@@ -103,6 +103,9 @@ private fun TigerFilesApp() {
     var busy by remember { mutableStateOf(false) }
     var allFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
     var currentFolderFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var dashboardCounts by remember { mutableStateOf(FileCategory.values().associateWith { 0 }) }
+    var dashboardFileCount by remember { mutableIntStateOf(0) }
+    var dashboardFolderCount by remember { mutableIntStateOf(0) }
     val selectedUris = remember { mutableStateListOf<String>() }
     val favoriteUris = remember { mutableStateListOf<String>().apply { addAll(prefs.getStringSet("favorites", emptySet()).orEmpty()) } }
     val recentUris = remember { mutableStateListOf<String>().apply { addAll(prefs.getString("recents", "").orEmpty().split("\n").filter { it.isNotBlank() }) } }
@@ -145,9 +148,11 @@ private fun TigerFilesApp() {
     LaunchedEffect(rootFolder, refreshKey) {
         scanning = true
         try {
-            allFiles = withContext(Dispatchers.IO) {
-                rootFolder?.let { scanFolderTree(it, 8, 2500) }.orEmpty()
-            }
+            val summary = withContext(Dispatchers.IO) { scanFolderSummary(rootFolder) }
+            allFiles = summary.files
+            dashboardCounts = summary.categoryCounts
+            dashboardFileCount = summary.fileCount
+            dashboardFolderCount = summary.folderCount
         } finally {
             scanning = false
         }
@@ -165,11 +170,6 @@ private fun TigerFilesApp() {
     val indexedFiles = remember(allFiles) { allFiles.associateBy { it.uri.toString() } }
     val favoriteFiles = favoriteUris.mapNotNull { indexedFiles[it] }
     val recentFiles = recentUris.mapNotNull { indexedFiles[it] }.distinctBy { it.uri.toString() }.take(8)
-    val dashboardCounts = remember(allFiles) {
-        FileCategory.values().associateWith { item -> allFiles.count { matchesCategory(it, item) } }
-    }
-    val dashboardFileCount = remember(allFiles) { allFiles.count { !it.isDirectory } }
-    val dashboardFolderCount = remember(allFiles) { allFiles.count { it.isDirectory } }
     val visibleFiles = when (screen) {
         AppScreen.FAVORITES -> favoriteFiles
         AppScreen.FILES -> {
@@ -358,16 +358,16 @@ private fun TigerFilesApp() {
                     }
                     IconButton(onClick = { refreshKey++ }) { Icon(Icons.Default.Refresh, contentDescription = "تازه‌سازی") }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.72f), scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background, scrolledContainerColor = MaterialTheme.colorScheme.surface)
             )
         },
         bottomBar = {
             Surface(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(26.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                color = MaterialTheme.colorScheme.surface,
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                shadowElevation = 12.dp
+                shadowElevation = 0.dp
             ) {
                 NavigationBar(containerColor = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface, tonalElevation = 0.dp) {
                     AppScreen.values().forEach { item ->
@@ -403,7 +403,7 @@ private fun TigerFilesApp() {
                 }) { Icon(Icons.Default.CreateNewFolder, contentDescription = "ایجاد فایل یا پوشه") }
             }
         },
-        containerColor = Color.Transparent
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         when (screen) {
             AppScreen.HOME -> HomeDashboard(
@@ -566,7 +566,7 @@ private fun TigerFilesApp() {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DetailLine("نام", file.name ?: "بدون نام")
-                    DetailLine("نوع", if (file.isDirectory) "پوشه" else file.type ?: mimeFromName(file.name))
+                    DetailLine("نوع", friendlyFileType(file))
                     DetailLine("حجم", if (file.isDirectory) "—" else formatBytes(file.length()))
                     DetailLine("آخرین تغییر", if (file.lastModified() > 0L) DateFormat.getDateTimeInstance().format(Date(file.lastModified())) else "نامشخص")
                     DetailLine("شناسه", file.uri.lastPathSegment ?: "—")
@@ -579,27 +579,7 @@ private fun TigerFilesApp() {
 
 @Composable
 private fun TigerBackdrop(modifier: Modifier = Modifier) {
-    val scheme = MaterialTheme.colorScheme
-    Box(
-        modifier.fillMaxSize().background(
-            Brush.verticalGradient(
-                listOf(scheme.background, scheme.background.copy(alpha = 0.96f), scheme.surfaceVariant.copy(alpha = 0.32f))
-            )
-        )
-    ) {
-        Box(
-            Modifier.align(Alignment.TopEnd).offset(x = 92.dp, y = (-112).dp).size(300.dp)
-                .background(Brush.radialGradient(listOf(scheme.primary.copy(alpha = 0.23f), Color.Transparent)), CircleShape)
-        )
-        Box(
-            Modifier.align(Alignment.BottomStart).offset(x = (-118).dp, y = 102.dp).size(310.dp)
-                .background(Brush.radialGradient(listOf(scheme.secondary.copy(alpha = 0.17f), Color.Transparent)), CircleShape)
-        )
-        Box(
-            Modifier.align(Alignment.CenterEnd).offset(x = 126.dp, y = 30.dp).size(210.dp)
-                .background(Brush.radialGradient(listOf(scheme.tertiary.copy(alpha = 0.09f), Color.Transparent)), CircleShape)
-        )
-    }
+    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
 }
 
 @Composable
@@ -693,7 +673,7 @@ private fun HomeDashboard(
         }
         item {
             Text(
-                "TIGER FILES  •  ساخته شده برای مدیریت ساده‌تر",
+                "مدیریت فایل‌ها  •  ساده، مرتب و سریع",
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -716,19 +696,17 @@ private fun DashboardHero(
         shape = RoundedCornerShape(30.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Box(
             Modifier.fillMaxWidth()
                 .background(Brush.linearGradient(listOf(Color(0xFF101827), Color(0xFF1D3045), Color(0xFF55390F))))
                 .padding(20.dp)
         ) {
-            Box(Modifier.align(Alignment.TopEnd).offset(x = 72.dp, y = (-82).dp).size(190.dp).border(1.dp, Color.White.copy(alpha = 0.10f), CircleShape))
-            Box(Modifier.align(Alignment.TopEnd).offset(x = 42.dp, y = (-50).dp).size(130.dp).border(1.dp, gold.copy(alpha = 0.18f), CircleShape))
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("TIGER  /  FILE MANAGER", style = MaterialTheme.typography.labelSmall, color = gold, fontWeight = FontWeight.Bold)
+                        Text("مدیریت فایل‌ها", style = MaterialTheme.typography.labelSmall, color = gold, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(9.dp))
                         Text(
                             "همه‌چیز،\nسر جای خودش.",
@@ -815,7 +793,7 @@ private fun StorageOverview(info: StorageInfo) {
         shape = RoundedCornerShape(25.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.66f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(Modifier.padding(17.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -838,7 +816,7 @@ private fun StorageOverview(info: StorageInfo) {
                         trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
                     )
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(String.format(Locale.US, "%.0f%%", fraction * 100f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                        Text(toPersianDigits(String.format(Locale.US, "%.0f", fraction * 100f)) + "٪", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
                         Text("مصرف", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -1128,14 +1106,14 @@ private fun FileRowCard(
         shape = RoundedCornerShape(20.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.58f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)),
         colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.66f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
             FileIconBox(fileIcon(file), folder)
             Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
                 Text(file.name ?: "بدون نام", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(if (folder) "پوشه" else formatBytes(file.length()) + "  •  " + (file.type ?: mimeFromName(file.name)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (folder) "پوشه" else formatBytes(file.length()) + "  •  " + friendlyFileType(file), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (selected) Icon(Icons.Default.Check, contentDescription = "انتخاب شده", tint = MaterialTheme.colorScheme.primary)
             else {
@@ -1257,7 +1235,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        Text("TIGER Files  •  نسخه 0.6.0", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("نسخه ۰٫۶٫۱", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("ساخته شده توسط mobin", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -1276,6 +1254,32 @@ private fun readStorageInfo(): StorageInfo = runCatching {
     StorageInfo(stat.totalBytes, stat.availableBytes.coerceAtMost(stat.totalBytes))
 }.getOrDefault(StorageInfo(0L, 0L))
 
+private data class FileScanSummary(
+    val files: List<DocumentFile>,
+    val categoryCounts: Map<FileCategory, Int>,
+    val fileCount: Int,
+    val folderCount: Int
+)
+
+private fun scanFolderSummary(root: DocumentFile?): FileScanSummary {
+    val files = root?.let { scanFolderTree(it, maxDepth = 6, maxItems = 1500) }.orEmpty()
+    val counts = FileCategory.values().associateWith { 0 }.toMutableMap()
+    var fileCount = 0
+    var folderCount = 0
+    counts[FileCategory.ALL] = files.size
+    files.forEach { file ->
+        if (file.isDirectory) {
+            folderCount++
+            counts[FileCategory.FOLDERS] = (counts[FileCategory.FOLDERS] ?: 0) + 1
+        } else {
+            fileCount++
+            val category = detectFileCategory(file.name.orEmpty(), file.type.orEmpty())
+            if (category != null) counts[category] = (counts[category] ?: 0) + 1
+        }
+    }
+    return FileScanSummary(files, counts, fileCount, folderCount)
+}
+
 private fun scanFolderTree(root: DocumentFile, maxDepth: Int, maxItems: Int): List<DocumentFile> {
     val result = ArrayList<DocumentFile>()
     fun walk(folder: DocumentFile, depth: Int) {
@@ -1291,15 +1295,50 @@ private fun scanFolderTree(root: DocumentFile, maxDepth: Int, maxItems: Int): Li
     return result
 }
 
+private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic")
+private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "mov", "avi", "webm", "3gp")
+private val AUDIO_EXTENSIONS = setOf("mp3", "wav", "aac", "flac", "ogg", "m4a")
+private val DOCUMENT_EXTENSIONS = setOf("pdf", "txt", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "rtf", "csv")
+private val ARCHIVE_EXTENSIONS = setOf("zip", "rar", "7z", "tar", "gz", "bz2")
+
 private fun matchesCategory(file: DocumentFile, category: FileCategory): Boolean = when (category) {
     FileCategory.ALL -> true
     FileCategory.FOLDERS -> file.isDirectory
-    FileCategory.IMAGES -> !file.isDirectory && (file.type.orEmpty().startsWith("image/") || hasExtension(file, setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic")))
-    FileCategory.VIDEOS -> !file.isDirectory && (file.type.orEmpty().startsWith("video/") || hasExtension(file, setOf("mp4", "mkv", "mov", "avi", "webm", "3gp")))
-    FileCategory.AUDIO -> !file.isDirectory && (file.type.orEmpty().startsWith("audio/") || hasExtension(file, setOf("mp3", "wav", "aac", "flac", "ogg", "m4a")))
-    FileCategory.DOCUMENTS -> !file.isDirectory && (file.type.orEmpty().startsWith("text/") || file.type == "application/pdf" || file.type.orEmpty().contains("word") || file.type.orEmpty().contains("excel") || hasExtension(file, setOf("pdf", "txt", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "rtf", "csv")))
-    FileCategory.APK -> !file.isDirectory && (file.type == "application/vnd.android.package-archive" || hasExtension(file, setOf("apk", "xapk", "apks")))
-    FileCategory.ARCHIVES -> !file.isDirectory && hasExtension(file, setOf("zip", "rar", "7z", "tar", "gz", "bz2"))
+    else -> !file.isDirectory && detectFileCategory(file.name.orEmpty(), file.type.orEmpty()) == category
+}
+
+private fun detectFileCategory(name: String, mimeType: String): FileCategory? {
+    val extension = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+    return when {
+        mimeType.startsWith("image/") || extension in IMAGE_EXTENSIONS -> FileCategory.IMAGES
+        mimeType.startsWith("video/") || extension in VIDEO_EXTENSIONS -> FileCategory.VIDEOS
+        mimeType.startsWith("audio/") || extension in AUDIO_EXTENSIONS -> FileCategory.AUDIO
+        mimeType.startsWith("text/") || mimeType == "application/pdf" || mimeType.contains("word") || mimeType.contains("excel") ||
+            extension in DOCUMENT_EXTENSIONS -> FileCategory.DOCUMENTS
+        mimeType == "application/vnd.android.package-archive" || extension in setOf("apk", "xapk", "apks") -> FileCategory.APK
+        extension in ARCHIVE_EXTENSIONS -> FileCategory.ARCHIVES
+        else -> null
+    }
+}
+
+private fun friendlyFileType(file: DocumentFile): String {
+    if (file.isDirectory) return "پوشه"
+    return when (detectFileCategory(file.name.orEmpty(), file.type.orEmpty())) {
+        FileCategory.IMAGES -> "تصویر"
+        FileCategory.VIDEOS -> "ویدئو"
+        FileCategory.AUDIO -> "فایل صوتی"
+        FileCategory.DOCUMENTS -> "سند"
+        FileCategory.APK -> "برنامه"
+        FileCategory.ARCHIVES -> "فایل فشرده"
+        else -> when (file.name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT)) {
+            "html", "htm" -> "صفحه وب"
+            "css" -> "شیوه‌نامه"
+            "js" -> "فایل جاوااسکریپت"
+            "json" -> "داده جیسون"
+            "xml" -> "فایل ایکس‌ام‌ال"
+            else -> "فایل"
+        }
+    }
 }
 
 private fun hasExtension(file: DocumentFile, extensions: Set<String>): Boolean =
@@ -1369,7 +1408,7 @@ private fun isSameOrInside(candidate: DocumentFile, ancestor: DocumentFile): Boo
 private fun copyDocument(context: Context, source: DocumentFile, destination: DocumentFile): Boolean {
     if (source.isDirectory && isSameOrInside(destination, source)) return false
     if (source.uri == destination.uri) return false
-    val originalName = source.name ?: if (source.isDirectory) "پوشه" else "file"
+    val originalName = source.name ?: if (source.isDirectory) "پوشه" else "فایل"
     val targetName = uniqueName(destination, originalName)
     if (source.isDirectory) {
         val targetFolder = destination.createDirectory(targetName) ?: return false
@@ -1393,6 +1432,12 @@ private fun copyDocument(context: Context, source: DocumentFile, destination: Do
     }
 }
 
+private fun toPersianDigits(value: String): String = buildString(value.length) {
+    value.forEach { character ->
+        append(if (character in '0'..'9') "۰۱۲۳۴۵۶۷۸۹"[character - '0'] else character)
+    }
+}
+
 private fun formatBytes(bytes: Long): String {
     if (bytes <= 0L) return "۰ بایت"
     val kb = 1024.0
@@ -1400,10 +1445,10 @@ private fun formatBytes(bytes: Long): String {
     val gb = mb * 1024.0
     val tb = gb * 1024.0
     return when {
-        bytes >= tb -> String.format(Locale.US, "%.1f TB", bytes / tb)
-        bytes >= gb -> String.format(Locale.US, "%.1f GB", bytes / gb)
-        bytes >= mb -> String.format(Locale.US, "%.1f MB", bytes / mb)
-        bytes >= kb -> String.format(Locale.US, "%.0f KB", bytes / kb)
-        else -> "$bytes B"
+        bytes >= tb -> toPersianDigits(String.format(Locale.US, "%.1f", bytes / tb)) + " ترابایت"
+        bytes >= gb -> toPersianDigits(String.format(Locale.US, "%.1f", bytes / gb)) + " گیگابایت"
+        bytes >= mb -> toPersianDigits(String.format(Locale.US, "%.1f", bytes / mb)) + " مگابایت"
+        bytes >= kb -> toPersianDigits(String.format(Locale.US, "%.0f", bytes / kb)) + " کیلوبایت"
+        else -> toPersianDigits(bytes.toString()) + " بایت"
     }
 }
