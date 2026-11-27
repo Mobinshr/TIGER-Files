@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.os.StatFs
+import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -104,6 +105,7 @@ private fun TigerFilesApp() {
     var clipboardFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
     var clipboardIsCut by remember { mutableStateOf(false) }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var createAsFile by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showDetailsDialog by remember { mutableStateOf(false) }
@@ -138,10 +140,13 @@ private fun TigerFilesApp() {
 
     LaunchedEffect(rootFolder, refreshKey) {
         scanning = true
-        allFiles = withContext(Dispatchers.IO) {
-            rootFolder?.let { scanFolderTree(it, 8, 2500) }.orEmpty()
+        try {
+            allFiles = withContext(Dispatchers.IO) {
+                rootFolder?.let { scanFolderTree(it, 8, 2500) }.orEmpty()
+            }
+        } finally {
+            scanning = false
         }
-        scanning = false
     }
 
     val indexedFiles = remember(allFiles) { allFiles.associateBy { it.uri.toString() } }
@@ -151,7 +156,7 @@ private fun TigerFilesApp() {
         AppScreen.FAVORITES -> favoriteFiles
         AppScreen.FILES -> {
             val source = if (query.isNotBlank() || category != FileCategory.ALL) {
-                allFiles.filter { !it.isDirectory || category == FileCategory.FOLDERS }
+                allFiles
             } else {
                 runCatching { currentFolder?.listFiles()?.toList().orEmpty() }.getOrDefault(emptyList())
             }
@@ -196,6 +201,14 @@ private fun TigerFilesApp() {
         screen = AppScreen.FILES
         query = ""
         selectedUris.clear()
+    }
+    fun navigateToBreadcrumb(index: Int) {
+        if (index in pathStack.indices) {
+            while (pathStack.lastIndex > index) pathStack.removeAt(pathStack.lastIndex)
+            selectedUris.clear()
+            query = ""
+            category = FileCategory.ALL
+        }
     }
     fun openDocument(file: DocumentFile) {
         if (file.isDirectory) {
@@ -348,7 +361,11 @@ private fun TigerFilesApp() {
         },
         floatingActionButton = {
             if (screen == AppScreen.FILES && currentFolder != null) {
-                FloatingActionButton(onClick = { showCreateDialog = true }) { Icon(Icons.Default.CreateNewFolder, contentDescription = "پوشه جدید") }
+                FloatingActionButton(onClick = {
+                    createAsFile = false
+                    nameInput = ""
+                    showCreateDialog = true
+                }) { Icon(Icons.Default.CreateNewFolder, contentDescription = "ایجاد فایل یا پوشه") }
             }
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -363,8 +380,10 @@ private fun TigerFilesApp() {
             )
             AppScreen.FILES -> BrowserScreen(
                 Modifier.padding(padding), rootFolder, currentFolder, pathStack.toList(), visibleFiles,
-                query, { query = it }, category, { category = it; selectedUris.clear() }, gridMode,
-                selectedUris.toSet(), selectedUris.size, clipboardFiles.size, clipboardIsCut, busy || scanning,
+                query, { query = it; selectedUris.clear() }, category, { category = it; selectedUris.clear() }, gridMode,
+                selectedUris.toSet(),
+                visibleFiles.isNotEmpty() && visibleFiles.all { selectedUris.contains(it.uri.toString()) },
+                selectedUris.size, clipboardFiles.size, clipboardIsCut, busy || scanning,
                 onChooseFolder = { folderPicker.launch(null) },
                 onOpen = { openDocument(it) },
                 onLongSelect = { if (!selectedUris.contains(it.uri.toString())) selectedUris.add(it.uri.toString()) },
@@ -380,7 +399,16 @@ private fun TigerFilesApp() {
                 onClearSelection = { selectedUris.clear() },
                 onDetails = { detailsTarget = it; showDetailsDialog = true },
                 isFavorite = { favoriteUris.contains(it.uri.toString()) },
-                onToggleFavorite = { toggleFavorite(it) }
+                onToggleFavorite = { toggleFavorite(it) },
+                onToggleSelectAll = {
+                    val keys = visibleFiles.map { it.uri.toString() }
+                    if (keys.isNotEmpty() && keys.all { selectedUris.contains(it) }) selectedUris.clear()
+                    else {
+                        selectedUris.clear()
+                        selectedUris.addAll(keys)
+                    }
+                },
+                onNavigateTo = { navigateToBreadcrumb(it) }
             )
             AppScreen.FAVORITES -> FavoritesScreen(
                 Modifier.padding(padding), favoriteFiles, { openDocument(it) }, { toggleFavorite(it) },
@@ -398,21 +426,69 @@ private fun TigerFilesApp() {
 
     if (showCreateDialog) {
         AlertDialog(
-            onDismissRequest = { showCreateDialog = false; nameInput = "" },
-            title = { Text("ساخت پوشه جدید") },
-            text = { OutlinedTextField(value = nameInput, onValueChange = { nameInput = it }, singleLine = true, label = { Text("نام پوشه") }) },
+            onDismissRequest = { showCreateDialog = false; nameInput = ""; createAsFile = false },
+            title = { Text(if (createAsFile) "ساخت فایل جدید" else "ساخت پوشه جدید") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = !createAsFile,
+                            onClick = { createAsFile = false },
+                            label = { Text("پوشه") }
+                        )
+                        FilterChip(
+                            selected = createAsFile,
+                            onClick = { createAsFile = true },
+                            label = { Text("فایل") }
+                        )
+                    }
+                    OutlinedTextField(
+                        value = nameInput,
+                        onValueChange = { nameInput = it },
+                        singleLine = true,
+                        label = { Text(if (createAsFile) "نام فایل" else "نام پوشه") },
+                        placeholder = { Text(if (createAsFile) "مثلاً notes.txt" else "نام پوشه") }
+                    )
+                    if (createAsFile) {
+                        Text(
+                            "اگر پسوند وارد نکنی، فایل با پسوند ‎.txt ساخته می‌شود.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
-                    val name = nameInput.trim()
-                    if (name.isNotEmpty() && currentFolder?.findFile(name) == null) {
-                        if (currentFolder?.createDirectory(name) == null) Toast.makeText(context, "ساخت پوشه انجام نشد", Toast.LENGTH_SHORT).show()
-                        refreshKey++
-                    } else if (name.isNotEmpty()) Toast.makeText(context, "این نام از قبل وجود دارد", Toast.LENGTH_SHORT).show()
+                    val rawName = nameInput.trim()
+                    val name = if (createAsFile && rawName.isNotEmpty() && !rawName.substringAfterLast('.', "").isNotEmpty()) "$rawName.txt" else rawName
+                    val validName = rawName.isNotEmpty() && rawName != "." && rawName != ".." &&
+                        rawName.none { it == '/' || it == 92.toChar() }
+                    val destination = currentFolder
+                    if (!validName || destination == null) {
+                        Toast.makeText(context, "نام واردشده معتبر نیست", Toast.LENGTH_SHORT).show()
+                    } else if (destination.findFile(name) != null) {
+                        Toast.makeText(context, "این نام از قبل وجود دارد", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val created = runCatching {
+                            if (createAsFile) destination.createFile(mimeFromName(name), name)
+                            else destination.createDirectory(name)
+                        }.getOrNull()
+                        if (created == null) {
+                            Toast.makeText(context, "ایجاد مورد جدید انجام نشد", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, if (createAsFile) "فایل ساخته شد" else "پوشه ساخته شد", Toast.LENGTH_SHORT).show()
+                            refreshKey++
+                        }
+                    }
                     showCreateDialog = false
                     nameInput = ""
+                    createAsFile = false
                 }) { Text("ساخت") }
             },
-            dismissButton = { TextButton(onClick = { showCreateDialog = false; nameInput = "" }) { Text("انصراف") } }
+            dismissButton = {
+                TextButton(onClick = { showCreateDialog = false; nameInput = ""; createAsFile = false }) { Text("انصراف") }
+            }
         )
     }
     if (showRenameDialog) {
@@ -603,6 +679,7 @@ private fun BrowserScreen(
     onCategory: (FileCategory) -> Unit,
     gridMode: Boolean,
     selectedUris: Set<String>,
+    allSelected: Boolean,
     selectedCount: Int,
     clipboardCount: Int,
     clipboardIsCut: Boolean,
@@ -622,7 +699,9 @@ private fun BrowserScreen(
     onClearSelection: () -> Unit,
     onDetails: (DocumentFile) -> Unit,
     isFavorite: (DocumentFile) -> Boolean,
-    onToggleFavorite: (DocumentFile) -> Unit
+    onToggleFavorite: (DocumentFile) -> Unit,
+    onToggleSelectAll: () -> Unit,
+    onNavigateTo: (Int) -> Unit
 ) {
     if (rootFolder == null) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -657,8 +736,20 @@ private fun BrowserScreen(
         if (category == FileCategory.ALL && query.isBlank()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 pathStack.forEachIndexed { index, folder ->
-                    Text(folder.name ?: "حافظه", color = if (index == pathStack.lastIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium, fontWeight = if (index == pathStack.lastIndex) FontWeight.Bold else FontWeight.Normal)
-                    if (index != pathStack.lastIndex) Text("‹", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(
+                        onClick = { onNavigateTo(index) },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = if (index == pathStack.lastIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Text(
+                            folder.name ?: "حافظه",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (index == pathStack.lastIndex) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                    if (index != pathStack.lastIndex) Icon(Icons.Default.ChevronLeft, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -675,6 +766,11 @@ private fun BrowserScreen(
             Text(files.size.toString() + " مورد", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
             if (busy) Text("در حال پردازش…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            if (files.isNotEmpty()) {
+                TextButton(onClick = onToggleSelectAll, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                    Text(if (allSelected) "لغو انتخاب همه" else "انتخاب همه")
+                }
+            }
             TextButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("به‌روزرسانی") }
         }
         if (files.isEmpty()) {
@@ -895,7 +991,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        Text("TIGER Files  •  نسخه 0.2.0", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("TIGER Files  •  نسخه 0.3.0", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("ساخته شده توسط mobin", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -955,6 +1051,13 @@ private fun fileIcon(file: DocumentFile): ImageVector = when {
 }
 
 private fun mimeFromName(name: String?): String = when (name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT)) {
+    "html", "htm" -> "text/html"
+    "css" -> "text/css"
+    "js" -> "text/javascript"
+    "json" -> "application/json"
+    "md" -> "text/markdown"
+    "xml" -> "application/xml"
+    "csv" -> "text/csv"
     "jpg", "jpeg" -> "image/jpeg"
     "png" -> "image/png"
     "gif" -> "image/gif"
@@ -978,14 +1081,38 @@ private fun uniqueName(folder: DocumentFile, desired: String): String {
     return "$base (کپی $index)$ext"
 }
 
+private fun isSameOrInside(candidate: DocumentFile, ancestor: DocumentFile): Boolean {
+    if (candidate.uri == ancestor.uri) return true
+
+    val candidateId = runCatching { DocumentsContract.getDocumentId(candidate.uri) }.getOrNull()
+    val ancestorId = runCatching { DocumentsContract.getDocumentId(ancestor.uri) }.getOrNull()
+    if (candidateId != null && ancestorId != null &&
+        (candidateId == ancestorId || candidateId.startsWith("$ancestorId/"))
+    ) return true
+
+    var parent = runCatching { candidate.parentFile }.getOrNull()
+    var depth = 0
+    while (parent != null && depth++ < 64) {
+        if (parent.uri == ancestor.uri) return true
+        parent = runCatching { parent.parentFile }.getOrNull()
+    }
+    return false
+}
+
 private fun copyDocument(context: Context, source: DocumentFile, destination: DocumentFile): Boolean {
-    if (destination.uri.toString().startsWith(source.uri.toString())) return false
+    if (source.isDirectory && isSameOrInside(destination, source)) return false
+    if (source.uri == destination.uri) return false
     val originalName = source.name ?: if (source.isDirectory) "پوشه" else "file"
     val targetName = uniqueName(destination, originalName)
     if (source.isDirectory) {
         val targetFolder = destination.createDirectory(targetName) ?: return false
+        val children = runCatching { source.listFiles().toList() }.getOrElse {
+            targetFolder.delete()
+            return false
+        }
         var success = true
-        source.listFiles().forEach { child -> if (!copyDocument(context, child, targetFolder)) success = false }
+        children.forEach { child -> if (!copyDocument(context, child, targetFolder)) success = false }
+        if (!success) targetFolder.delete()
         return success
     }
     val target = destination.createFile(source.type ?: mimeFromName(source.name), targetName) ?: return false

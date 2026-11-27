@@ -5,7 +5,7 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 ## App details
 
 - Application ID: `com.mobin.tigerfiles`
-- Version: **0.2.0**
+- Version: **0.3.0**
 - Minimum Android: **Android 10 (API 29)**
 - Target SDK: 35
 - Persian RTL interface with automatic system light/dark theme
@@ -24,6 +24,9 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 - Favorites and recently opened files
 - File details and hidden-file visibility setting
 - Persistent access to the selected folder
+- Create new folders and empty text/code files
+- Select all visible items and navigate through clickable folder breadcrumbs
+- Safer recursive folder copy with self/descendant-copy protection
 
 ## Build and signing
 
