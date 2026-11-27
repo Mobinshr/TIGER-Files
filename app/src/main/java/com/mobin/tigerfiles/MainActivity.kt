@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import com.mobin.tigerfiles.ui.theme.TigerFilesTheme
+import java.io.IOException
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -101,6 +102,7 @@ private fun TigerFilesApp() {
     var showHidden by remember { mutableStateOf(prefs.getBoolean("show_hidden", false)) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var scanning by remember { mutableStateOf(false) }
+    var loadingFolder by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var allFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
     var currentFolderFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
@@ -166,12 +168,17 @@ private fun TigerFilesApp() {
         }
     }
 
-    // Query the current folder off the main thread to keep navigation responsive.
+    // Enumerate the current folder on IO and keep the previous list until the new one is ready.
     LaunchedEffect(currentFolder, refreshKey) {
-        currentFolderFiles = emptyList()
-        currentFolderFiles = withContext(Dispatchers.IO) {
-            runCatching { currentFolder?.listFiles()?.toList().orEmpty().onEach(::cacheDocumentMetadata) }
-                .getOrDefault(emptyList())
+        loadingFolder = true
+        try {
+            val loaded = withContext(Dispatchers.IO) {
+                runCatching { currentFolder?.listFiles()?.toList().orEmpty().onEach(::cacheDocumentMetadata) }
+                    .getOrDefault(emptyList())
+            }
+            currentFolderFiles = loaded
+        } finally {
+            loadingFolder = false
         }
     }
 
@@ -183,28 +190,39 @@ private fun TigerFilesApp() {
     val recentFiles = remember(indexedFiles, recentKeys) {
         recentKeys.mapNotNull { indexedFiles[it] }.distinctBy { it.uri.toString() }.take(8)
     }
-    val visibleFiles = remember(
+    var visibleFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var preparingList by remember { mutableStateOf(false) }
+    LaunchedEffect(
         screen, favoriteFiles, allFiles, currentFolderFiles, query, showHidden, category, sortMode
     ) {
-        val source = when (screen) {
-            AppScreen.FAVORITES -> favoriteFiles
-            AppScreen.FILES -> if (query.isNotBlank() || category != FileCategory.ALL) allFiles else currentFolderFiles
-            else -> emptyList()
-        }
-        val filtered = if (screen == AppScreen.FILES) source.filter { file ->
-            val nameOk = query.isBlank() || file.name.orEmpty().contains(query, ignoreCase = true)
-            val hiddenOk = showHidden || !file.name.orEmpty().startsWith(".")
-            nameOk && hiddenOk && matchesCategory(file, category)
-        } else source
-        when (sortMode) {
-            SortMode.NAME -> filtered.sortedWith(compareBy<DocumentFile>({ !it.isDirectory }, { it.name.orEmpty().lowercase(Locale.ROOT) }))
-            SortMode.SIZE -> filtered.sortedByDescending { cachedLength(it) }
-            SortMode.DATE -> filtered.sortedByDescending { cachedLastModified(it) }
-            SortMode.TYPE -> filtered.sortedWith(compareBy<DocumentFile>(
-                { !it.isDirectory },
-                { it.name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT) },
-                { it.name.orEmpty().lowercase(Locale.ROOT) }
-            ))
+        preparingList = true
+        try {
+            val source = when (screen) {
+                AppScreen.FAVORITES -> favoriteFiles
+                AppScreen.FILES -> if (query.isNotBlank() || category != FileCategory.ALL) allFiles else currentFolderFiles
+                else -> emptyList()
+            }
+            val prepared = withContext(Dispatchers.Default) {
+                val filtered = if (screen == AppScreen.FILES) source.filter { file ->
+                    val name = cachedName(file)
+                    val nameOk = query.isBlank() || name.contains(query, ignoreCase = true)
+                    val hiddenOk = showHidden || !name.startsWith(".")
+                    nameOk && hiddenOk && matchesCategory(file, category)
+                } else source
+                when (sortMode) {
+                    SortMode.NAME -> filtered.sortedWith(compareBy<DocumentFile>({ !cachedIsDirectory(it) }, { cachedName(it).lowercase(Locale.ROOT) }))
+                    SortMode.SIZE -> filtered.sortedByDescending { cachedLength(it) }
+                    SortMode.DATE -> filtered.sortedByDescending { cachedLastModified(it) }
+                    SortMode.TYPE -> filtered.sortedWith(compareBy<DocumentFile>(
+                        { !cachedIsDirectory(it) },
+                        { cachedName(it).substringAfterLast('.', "").lowercase(Locale.ROOT) },
+                        { cachedName(it).lowercase(Locale.ROOT) }
+                    ))
+                }
+            }
+            visibleFiles = prepared
+        } finally {
+            preparingList = false
         }
     }
     val selectedFiles = remember(visibleFiles, selectedKeys) {
@@ -340,6 +358,7 @@ private fun TigerFilesApp() {
         } catch (_: Exception) { Toast.makeText(context, "اشتراک‌گذاری انجام نشد", Toast.LENGTH_SHORT).show() }
     }
     fun deleteSelected() {
+        if (busy) return
         val targets = selectedFiles.toList()
         scope.launch {
             busy = true
@@ -357,34 +376,48 @@ private fun TigerFilesApp() {
         Toast.makeText(context, if (cut) "برای انتقال، وارد مقصد شو و جای‌گذاری را بزن" else "برای کپی، وارد مقصد شو و جای‌گذاری را بزن", Toast.LENGTH_SHORT).show()
     }
     fun pasteClipboard() {
+        if (busy) return
         val destination = currentFolder ?: return
         val pending = clipboardFiles
         val moving = clipboardIsCut
         if (pending.isEmpty()) return
         scope.launch {
             busy = true
-            val copied = withContext(Dispatchers.IO) {
-                var count = 0
+            val result = withContext(Dispatchers.IO) {
+                var completed = 0
+                var failed = 0
+                var sourceDeleteFailed = 0
+                val remaining = ArrayList<DocumentFile>()
                 pending.forEach { source ->
-                    val ok = runCatching { copyDocument(context, source, destination) }.getOrDefault(false)
-                    if (ok) {
-                        if (moving) runCatching { source.delete() }
-                        count++
+                    val copied = runCatching { copyDocument(context, source, destination) }.getOrDefault(false)
+                    if (!copied) {
+                        failed++
+                        remaining.add(source)
+                    } else {
+                        completed++
+                        if (moving && !runCatching { source.delete() }.getOrDefault(false)) {
+                            sourceDeleteFailed++
+                        }
                     }
                 }
-                count
+                Triple(completed, failed, sourceDeleteFailed) to remaining
             }
             busy = false
-            if (copied == pending.size) {
-                clipboardFiles = emptyList()
-                clipboardIsCut = false
-            }
+            clipboardFiles = result.second
+            if (clipboardFiles.isEmpty()) clipboardIsCut = false
             refreshKey++
-            Toast.makeText(context, "$copied مورد کپی یا منتقل شد", Toast.LENGTH_SHORT).show()
+            val (completed, failed, sourceDeleteFailed) = result.first
+            val message = buildString {
+                append("$completed مورد کپی شد")
+                if (moving && sourceDeleteFailed > 0) append("؛ حذف $sourceDeleteFailed فایل مبدا ناموفق بود")
+                if (failed > 0) append("؛ $failed مورد ناموفق ماند و در کلیپ‌بورد حفظ شد")
+            }
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
 
     fun compressSelectedFiles() {
+        if (busy) return
         val sources = selectedFiles.toList()
         val destination = currentFolder
         if (sources.isEmpty() || destination == null) return
@@ -405,6 +438,7 @@ private fun TigerFilesApp() {
     }
 
     fun extractSelectedZip() {
+        if (busy) return
         val archive = selectedFiles.singleOrNull()
         val destination = currentFolder
         if (archive == null || destination == null) return
@@ -536,7 +570,7 @@ private fun TigerFilesApp() {
                 query, { query = it; selectedUris.clear() }, category, { category = it; selectedUris.clear() }, gridMode,
                 selectedUris.toSet(),
                 visibleFiles.isNotEmpty() && visibleFiles.all { selectedUris.contains(it.uri.toString()) },
-                selectedUris.size, clipboardFiles.size, clipboardIsCut, busy || scanning,
+                selectedUris.size, clipboardFiles.size, clipboardIsCut, busy || scanning || loadingFolder || preparingList,
                 onChooseFolder = { folderPicker.launch(null) },
                 onOpen = { openDocument(it) },
                 onLongSelect = { if (!selectedUris.contains(it.uri.toString())) selectedUris.add(it.uri.toString()) },
@@ -616,30 +650,39 @@ private fun TigerFilesApp() {
             },
             confirmButton = {
                 TextButton(onClick = {
+                    if (busy) return@TextButton
                     val rawName = nameInput.trim()
-                    val name = if (createAsFile && rawName.isNotEmpty() && !rawName.substringAfterLast('.', "").isNotEmpty()) "$rawName.txt" else rawName
-                    val validName = rawName.isNotEmpty() && rawName != "." && rawName != ".." &&
-                        rawName.none { it == '/' || it == 92.toChar() }
+                    val name = if (createAsFile && rawName.isNotEmpty() && rawName.substringAfterLast('.', "").isEmpty()) "$rawName.txt" else rawName
+                    val makeFile = createAsFile
+                    val validName = name.isNotEmpty() && name != "." && name != ".." &&
+                        name.none { it == '/' || it == 92.toChar() || it == 0.toChar() }
                     val destination = currentFolder
-                    if (!validName || destination == null) {
-                        Toast.makeText(context, "نام واردشده معتبر نیست", Toast.LENGTH_SHORT).show()
-                    } else if (destination.findFile(name) != null) {
-                        Toast.makeText(context, "این نام از قبل وجود دارد", Toast.LENGTH_SHORT).show()
-                    } else {
-                        val created = runCatching {
-                            if (createAsFile) destination.createFile(mimeFromName(name), name)
-                            else destination.createDirectory(name)
-                        }.getOrNull()
-                        if (created == null) {
-                            Toast.makeText(context, "ایجاد مورد جدید انجام نشد", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, if (createAsFile) "فایل ساخته شد" else "پوشه ساخته شد", Toast.LENGTH_SHORT).show()
-                            refreshKey++
-                        }
-                    }
                     showCreateDialog = false
                     nameInput = ""
                     createAsFile = false
+                    if (!validName || destination == null) {
+                        Toast.makeText(context, "نام واردشده معتبر نیست", Toast.LENGTH_SHORT).show()
+                    } else {
+                        scope.launch {
+                            busy = true
+                            val result = withContext(Dispatchers.IO) {
+                                if (destination.findFile(name) != null) 0
+                                else runCatching {
+                                    if (makeFile) destination.createFile(mimeFromName(name), name)
+                                    else destination.createDirectory(name)
+                                }.getOrNull()?.let { 1 } ?: -1
+                            }
+                            busy = false
+                            when (result) {
+                                1 -> {
+                                    Toast.makeText(context, if (makeFile) "فایل ساخته شد" else "پوشه ساخته شد", Toast.LENGTH_SHORT).show()
+                                    refreshKey++
+                                }
+                                0 -> Toast.makeText(context, "این نام از قبل وجود دارد", Toast.LENGTH_SHORT).show()
+                                else -> Toast.makeText(context, "ایجاد مورد جدید انجام نشد", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
                 }) { Text("ساخت") }
             },
             dismissButton = {
@@ -654,15 +697,23 @@ private fun TigerFilesApp() {
             text = { OutlinedTextField(value = nameInput, onValueChange = { nameInput = it }, singleLine = true, label = { Text("نام جدید") }) },
             confirmButton = {
                 TextButton(onClick = {
+                    if (busy) return@TextButton
                     val target = selectedFiles.singleOrNull()
                     val name = nameInput.trim()
-                    if (target != null && name.isNotEmpty()) {
-                        val ok = runCatching { target.renameTo(name) }.getOrDefault(false)
-                        Toast.makeText(context, if (ok) "نام فایل تغییر کرد" else "تغییر نام انجام نشد", Toast.LENGTH_SHORT).show()
-                        selectedUris.clear()
-                        refreshKey++
-                    }
                     showRenameDialog = false
+                    if (target != null && name.isNotEmpty() && name != "." && name != ".." &&
+                        !name.contains('/') && !name.contains(92.toChar()) && !name.contains(0.toChar())) {
+                        scope.launch {
+                            busy = true
+                            val ok = withContext(Dispatchers.IO) { runCatching { target.renameTo(name) }.getOrDefault(false) }
+                            busy = false
+                            Toast.makeText(context, if (ok) "نام فایل تغییر کرد" else "تغییر نام انجام نشد", Toast.LENGTH_SHORT).show()
+                            selectedUris.clear()
+                            if (ok) refreshKey++
+                        }
+                    } else if (name.isNotEmpty()) {
+                        Toast.makeText(context, "نام جدید معتبر نیست", Toast.LENGTH_SHORT).show()
+                    }
                 }) { Text("ذخیره") }
             },
             dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("انصراف") } }
@@ -1160,9 +1211,15 @@ private fun BrowserScreen(
         if (files.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(52.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(10.dp))
-                    Text(if (query.isNotBlank()) "نتیجه‌ای پیدا نشد" else "در این بخش فایلی وجود ندارد", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (busy) {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(10.dp))
+                        Text("در حال آماده‌سازی فهرست فایل‌ها…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(52.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(10.dp))
+                        Text(if (query.isNotBlank()) "نتیجه‌ای پیدا نشد" else "در این بخش فایلی وجود ندارد", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         } else if (gridMode) {
@@ -1248,7 +1305,7 @@ private fun FileRowCard(
     onToggleFavorite: () -> Unit,
     onDetails: () -> Unit = {}
 ) {
-    val folder = file.isDirectory
+    val folder = cachedIsDirectory(file)
     Card(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = RoundedCornerShape(20.dp),
@@ -1260,7 +1317,7 @@ private fun FileRowCard(
             FileIconBox(fileIcon(file), folder)
             Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
-                Text(file.name ?: "بدون نام", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(cachedName(file).ifBlank { "بدون نام" }, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(if (folder) "پوشه" else formatBytes(cachedLength(file)) + "  •  " + friendlyFileType(file), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (selected) Icon(Icons.Default.Check, contentDescription = "انتخاب شده", tint = MaterialTheme.colorScheme.primary)
@@ -1283,7 +1340,7 @@ private fun FileGridCard(
     onToggleFavorite: () -> Unit,
     onDetails: () -> Unit
 ) {
-    val folder = file.isDirectory
+    val folder = cachedIsDirectory(file)
     Card(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = RoundedCornerShape(19.dp),
@@ -1302,7 +1359,7 @@ private fun FileGridCard(
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Text(file.name ?: "بدون نام", fontWeight = FontWeight.SemiBold, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(cachedName(file).ifBlank { "بدون نام" }, fontWeight = FontWeight.SemiBold, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
             Text(if (folder) "پوشه" else formatBytes(cachedLength(file)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -1383,7 +1440,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        Text("نسخه ۰٫۶٫۱", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("نسخه ۰٫۷٫۳", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("ساخته شده توسط mobin", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -1407,47 +1464,62 @@ private data class FileScanSummary(
     val categoryCounts: Map<FileCategory, Int>,
     val fileCount: Int,
     val folderCount: Int,
-    val largestFiles: List<DocumentFile>
+    val largestFiles: List<DocumentFile>,
+    val scanLimited: Boolean
 )
 
+private data class FolderScanResult(val files: List<DocumentFile>, val scanLimited: Boolean)
+
 private fun scanFolderSummary(root: DocumentFile?): FileScanSummary {
-    val files = root?.let { scanFolderTree(it, maxDepth = 6, maxItems = 1500) }.orEmpty()
-    files.forEach(::cacheDocumentMetadata)
+    val scan = root?.let { scanFolderTree(it, maxDepth = 32, maxItems = 50000) }
+        ?: FolderScanResult(emptyList(), false)
+    val files = scan.files
     val counts = FileCategory.values().associateWith { 0 }.toMutableMap()
     var fileCount = 0
     var folderCount = 0
     counts[FileCategory.ALL] = files.size
     files.forEach { file ->
-        if (file.isDirectory) {
+        if (cachedIsDirectory(file)) {
             folderCount++
             counts[FileCategory.FOLDERS] = (counts[FileCategory.FOLDERS] ?: 0) + 1
         } else {
             fileCount++
-            val category = detectFileCategory(file.name.orEmpty(), file.type.orEmpty())
+            val category = detectFileCategory(cachedName(file), cachedMimeType(file))
             if (category != null) counts[category] = (counts[category] ?: 0) + 1
         }
     }
     val largestFiles = files.asSequence()
-        .filterNot { it.isDirectory }
-        .sortedByDescending { file -> cachedLength(file) }
+        .filterNot { cachedIsDirectory(it) }
+        .sortedByDescending { cachedLength(it) }
         .take(5)
         .toList()
-    return FileScanSummary(files, counts, fileCount, folderCount, largestFiles)
+    return FileScanSummary(files, counts, fileCount, folderCount, largestFiles, scan.scanLimited)
 }
 
-private fun scanFolderTree(root: DocumentFile, maxDepth: Int, maxItems: Int): List<DocumentFile> {
+private fun scanFolderTree(root: DocumentFile, maxDepth: Int, maxItems: Int): FolderScanResult {
     val result = ArrayList<DocumentFile>()
+    val visitedFolders = HashSet<String>()
+    var limited = false
     fun walk(folder: DocumentFile, depth: Int) {
-        if (depth > maxDepth || result.size >= maxItems) return
+        if (depth > maxDepth || result.size >= maxItems) {
+            limited = true
+            return
+        }
+        val folderKey = runCatching { folder.uri.toString() }.getOrDefault("")
+        if (!visitedFolders.add(folderKey)) return
         val children = runCatching { folder.listFiles().toList() }.getOrDefault(emptyList())
-        children.forEach { child ->
-            if (result.size >= maxItems) return
+        for (child in children) {
+            if (result.size >= maxItems) {
+                limited = true
+                break
+            }
+            cacheDocumentMetadata(child)
             result.add(child)
-            if (child.isDirectory) walk(child, depth + 1)
+            if (cachedIsDirectory(child)) walk(child, depth + 1)
         }
     }
     walk(root, 0)
-    return result
+    return FolderScanResult(result, limited)
 }
 
 private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic")
@@ -1458,8 +1530,8 @@ private val ARCHIVE_EXTENSIONS = setOf("zip", "rar", "7z", "tar", "gz", "bz2")
 
 private fun matchesCategory(file: DocumentFile, category: FileCategory): Boolean = when (category) {
     FileCategory.ALL -> true
-    FileCategory.FOLDERS -> file.isDirectory
-    else -> !file.isDirectory && detectFileCategory(file.name.orEmpty(), file.type.orEmpty()) == category
+    FileCategory.FOLDERS -> cachedIsDirectory(file)
+    else -> !cachedIsDirectory(file) && detectFileCategory(cachedName(file), cachedMimeType(file)) == category
 }
 
 private fun detectFileCategory(name: String, mimeType: String): FileCategory? {
@@ -1477,15 +1549,15 @@ private fun detectFileCategory(name: String, mimeType: String): FileCategory? {
 }
 
 private fun friendlyFileType(file: DocumentFile): String {
-    if (file.isDirectory) return "پوشه"
-    return when (detectFileCategory(file.name.orEmpty(), file.type.orEmpty())) {
+    if (cachedIsDirectory(file)) return "پوشه"
+    return when (detectFileCategory(cachedName(file), cachedMimeType(file))) {
         FileCategory.IMAGES -> "تصویر"
         FileCategory.VIDEOS -> "ویدئو"
         FileCategory.AUDIO -> "فایل صوتی"
         FileCategory.DOCUMENTS -> "سند"
         FileCategory.APK -> "برنامه"
         FileCategory.ARCHIVES -> "فایل فشرده"
-        else -> when (file.name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT)) {
+        else -> when (cachedName(file).substringAfterLast('.', "").lowercase(Locale.ROOT)) {
             "html", "htm" -> "صفحه وب"
             "css" -> "شیوه‌نامه"
             "js" -> "فایل جاوااسکریپت"
@@ -1497,10 +1569,10 @@ private fun friendlyFileType(file: DocumentFile): String {
 }
 
 private fun hasExtension(file: DocumentFile, extensions: Set<String>): Boolean =
-    file.name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT) in extensions
+    cachedName(file).substringAfterLast('.', "").lowercase(Locale.ROOT) in extensions
 
 private fun fileIcon(file: DocumentFile): ImageVector = when {
-    file.isDirectory -> Icons.Default.Folder
+    cachedIsDirectory(file) -> Icons.Default.Folder
     matchesCategory(file, FileCategory.IMAGES) -> Icons.Default.Image
     matchesCategory(file, FileCategory.VIDEOS) -> Icons.Default.Movie
     matchesCategory(file, FileCategory.AUDIO) -> Icons.Default.MusicNote
@@ -1561,30 +1633,66 @@ private fun isSameOrInside(candidate: DocumentFile, ancestor: DocumentFile): Boo
 }
 
 private fun copyDocument(context: Context, source: DocumentFile, destination: DocumentFile): Boolean {
-    if (source.isDirectory && isSameOrInside(destination, source)) return false
     if (source.uri == destination.uri) return false
-    val originalName = source.name ?: if (source.isDirectory) "پوشه" else "فایل"
-    val targetName = uniqueName(destination, originalName)
-    if (source.isDirectory) {
-        val targetFolder = destination.createDirectory(targetName) ?: return false
-        val children = runCatching { source.listFiles().toList() }.getOrElse {
-            targetFolder.delete()
-            return false
+    if (runCatching { source.isDirectory }.getOrDefault(false) &&
+        isSameOrInside(destination, source)
+    ) return false
+
+    var visitedItems = 0
+    val visitedUris = HashSet<String>()
+
+    fun removePartialTree(node: DocumentFile, depth: Int = 0) {
+        if (depth > 64) return
+        if (runCatching { node.isDirectory }.getOrDefault(false)) {
+            runCatching { node.listFiles().toList() }.getOrDefault(emptyList())
+                .forEach { removePartialTree(it, depth + 1) }
         }
-        var success = true
-        children.forEach { child -> if (!copyDocument(context, child, targetFolder)) success = false }
-        if (!success) targetFolder.delete()
-        return success
+        runCatching { node.delete() }
     }
-    val target = destination.createFile(source.type ?: mimeFromName(source.name), targetName) ?: return false
-    return try {
-        context.contentResolver.openInputStream(source.uri)?.use { input ->
-            context.contentResolver.openOutputStream(target.uri, "w")?.use { output -> input.copyTo(output); true } ?: false
-        } ?: false
-    } catch (_: Exception) {
-        target.delete()
-        false
+
+    fun copyNode(node: DocumentFile, parent: DocumentFile, depth: Int): Boolean {
+        if (depth > 64 || ++visitedItems > 20000) return false
+        val uriKey = runCatching { node.uri.toString() }.getOrDefault("")
+        if (!visitedUris.add(uriKey)) return false
+        val directory = runCatching { node.isDirectory }.getOrDefault(false)
+        val originalName = runCatching { node.name }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: if (directory) "پوشه" else "فایل"
+        val targetName = uniqueName(parent, originalName)
+
+        if (directory) {
+            val targetFolder = parent.createDirectory(targetName) ?: return false
+            val children = runCatching { node.listFiles().toList() }.getOrElse {
+                removePartialTree(targetFolder)
+                return false
+            }
+            for (child in children) {
+                if (!copyNode(child, targetFolder, depth + 1)) {
+                    removePartialTree(targetFolder)
+                    return false
+                }
+            }
+            return true
+        }
+
+        val mime = runCatching { node.type }.getOrNull().orEmpty()
+            .ifBlank { mimeFromName(originalName) }
+        val target = parent.createFile(mime, targetName) ?: return false
+        return try {
+            val input = context.contentResolver.openInputStream(node.uri)
+                ?: throw IOException("Cannot open source")
+            val output = context.contentResolver.openOutputStream(target.uri, "w")
+                ?: throw IOException("Cannot open destination")
+            input.use { sourceStream ->
+                output.use { targetStream -> sourceStream.copyTo(targetStream, 64 * 1024) }
+            }
+            true
+        } catch (_: Exception) {
+            runCatching { target.delete() }
+            false
+        }
     }
+
+    return copyNode(source, destination, 0)
 }
 
 private fun toPersianDigits(value: String): String = buildString(value.length) {
@@ -1608,20 +1716,40 @@ private fun formatBytes(bytes: Long): String {
     }
 }
 
-private data class CachedDocumentMetadata(val size: Long, val lastModified: Long)
+private data class CachedDocumentMetadata(
+    val name: String,
+    val isDirectory: Boolean,
+    val mimeType: String,
+    val size: Long,
+    val lastModified: Long
+)
 
 private val documentMetadataCache = ConcurrentHashMap<String, CachedDocumentMetadata>()
 
 private fun cacheDocumentMetadata(file: DocumentFile) {
     val key = file.uri.toString()
-    documentMetadataCache[key] = CachedDocumentMetadata(
-        size = if (file.isDirectory) 0L else runCatching { file.length() }.getOrDefault(0L),
-        lastModified = runCatching { file.lastModified() }.getOrDefault(0L)
-    )
+    val directory = runCatching { file.isDirectory }.getOrDefault(false)
+    val name = runCatching { file.name }.getOrNull().orEmpty()
+    val mimeType = if (directory) "" else runCatching { file.type }.getOrNull().orEmpty()
+    val size = if (directory) 0L else runCatching { file.length() }.getOrDefault(0L)
+    val modified = runCatching { file.lastModified() }.getOrDefault(0L)
+    documentMetadataCache[key] = CachedDocumentMetadata(name, directory, mimeType, size, modified)
 }
 
+private fun cachedMetadata(file: DocumentFile): CachedDocumentMetadata? =
+    documentMetadataCache[file.uri.toString()]
+
+private fun cachedName(file: DocumentFile): String =
+    cachedMetadata(file)?.name ?: runCatching { file.name }.getOrNull().orEmpty()
+
+private fun cachedIsDirectory(file: DocumentFile): Boolean =
+    cachedMetadata(file)?.isDirectory ?: runCatching { file.isDirectory }.getOrDefault(false)
+
+private fun cachedMimeType(file: DocumentFile): String =
+    cachedMetadata(file)?.mimeType ?: runCatching { file.type }.getOrNull().orEmpty()
+
 private fun cachedLength(file: DocumentFile): Long =
-    documentMetadataCache[file.uri.toString()]?.size ?: 0L
+    cachedMetadata(file)?.size ?: 0L
 
 private fun cachedLastModified(file: DocumentFile): Long =
-    documentMetadataCache[file.uri.toString()]?.lastModified ?: 0L
+    cachedMetadata(file)?.lastModified ?: 0L
