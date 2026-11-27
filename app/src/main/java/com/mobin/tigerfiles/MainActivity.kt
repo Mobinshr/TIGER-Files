@@ -75,7 +75,7 @@ private enum class FileCategory(val label: String, val icon: ImageVector) {
     ARCHIVES("فشرده", Icons.Default.Archive)
 }
 private enum class SortMode(val label: String) {
-    NAME("نام"), SIZE("حجم"), DATE("آخرین تغییر")
+    NAME("نام"), SIZE("حجم"), DATE("آخرین تغییر"), TYPE("نوع فایل")
 }
 private data class StorageInfo(val total: Long, val free: Long) {
     val used: Long get() = (total - free).coerceAtLeast(0L)
@@ -118,6 +118,11 @@ private fun TigerFilesApp() {
     var showDetailsDialog by remember { mutableStateOf(false) }
     var nameInput by remember { mutableStateOf("") }
     var detailsTarget by remember { mutableStateOf<DocumentFile?>(null) }
+    var showEditorDialog by remember { mutableStateOf(false) }
+    var editorFile by remember { mutableStateOf<DocumentFile?>(null) }
+    var editorText by remember { mutableStateOf("") }
+    var editorLoading by remember { mutableStateOf(false) }
+    var editorSaving by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val currentFolder = pathStack.lastOrNull()
@@ -190,6 +195,13 @@ private fun TigerFilesApp() {
             SortMode.NAME -> list.sortedWith(compareBy<DocumentFile>({ !it.isDirectory }, { it.name.orEmpty().lowercase(Locale.ROOT) }))
             SortMode.SIZE -> list.sortedByDescending { it.length() }
             SortMode.DATE -> list.sortedByDescending { it.lastModified() }
+            SortMode.TYPE -> list.sortedWith(
+                compareBy<DocumentFile>(
+                    { !it.isDirectory },
+                    { it.name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT) },
+                    { it.name.orEmpty().lowercase(Locale.ROOT) }
+                )
+            )
         }
     }
     val selectedFiles = visibleFiles.filter { selectedUris.contains(it.uri.toString()) }
@@ -233,14 +245,66 @@ private fun TigerFilesApp() {
             navigateToFolder(file)
         } else {
             recordRecent(file)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(file.uri, file.type ?: mimeFromName(file.name))
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (isEditableTextFile(file)) {
+                if (file.length() > MAX_TEXT_EDITOR_BYTES) {
+                    Toast.makeText(context, "این فایل برای ویرایش داخلی بیش از یک مگابایت است", Toast.LENGTH_LONG).show()
+                    return
+                }
+                editorFile = file
+                editorText = ""
+                editorLoading = true
+                showEditorDialog = true
+                scope.launch {
+                    val loaded = withContext(Dispatchers.IO) {
+                        runCatching {
+                            context.contentResolver.openInputStream(file.uri)
+                                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                        }
+                    }
+                    editorLoading = false
+                    val content = loaded.getOrNull()
+                    if (loaded.isSuccess && content != null) {
+                        editorText = content
+                    } else {
+                        showEditorDialog = false
+                        editorFile = null
+                        Toast.makeText(context, "خواندن فایل انجام نشد", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(file.uri, file.type ?: mimeFromName(file.name))
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                try {
+                    context.startActivity(Intent.createChooser(intent, "باز کردن فایل با"))
+                } catch (_: Exception) {
+                    Toast.makeText(context, "برنامه‌ای برای باز کردن این فایل پیدا نشد", Toast.LENGTH_SHORT).show()
+                }
             }
-            try {
-                context.startActivity(Intent.createChooser(intent, "باز کردن فایل با"))
-            } catch (_: Exception) {
-                Toast.makeText(context, "برنامه‌ای برای باز کردن این فایل پیدا نشد", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun saveEditedFile() {
+        val target = editorFile ?: return
+        val content = editorText
+        scope.launch {
+            editorSaving = true
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val output = context.contentResolver.openOutputStream(target.uri, "wt")
+                        ?: error("خروجی فایل در دسترس نیست")
+                    output.bufferedWriter(Charsets.UTF_8).use { it.write(content) }
+                }
+            }
+            editorSaving = false
+            if (result.isSuccess) {
+                showEditorDialog = false
+                editorFile = null
+                Toast.makeText(context, "تغییرات ذخیره شد", Toast.LENGTH_SHORT).show()
+                refreshKey++
+            } else {
+                Toast.makeText(context, "ذخیره‌سازی انجام نشد", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -309,6 +373,50 @@ private fun TigerFilesApp() {
             }
             refreshKey++
             Toast.makeText(context, "$copied مورد کپی یا منتقل شد", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun compressSelectedFiles() {
+        val sources = selectedFiles.toList()
+        val destination = currentFolder
+        if (sources.isEmpty() || destination == null) return
+        scope.launch {
+            busy = true
+            val archive = withContext(Dispatchers.IO) {
+                createZipArchive(context, sources, destination, "TIGER_${System.currentTimeMillis()}.zip")
+            }
+            busy = false
+            if (archive != null) {
+                selectedUris.clear()
+                refreshKey++
+                Toast.makeText(context, "فایل فشرده ساخته شد", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "فشرده‌سازی انجام نشد؛ فضای خالی و دسترسی پوشه را بررسی کن", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun extractSelectedZip() {
+        val archive = selectedFiles.singleOrNull()
+        val destination = currentFolder
+        if (archive == null || destination == null) return
+        if (!hasExtension(archive, setOf("zip"))) {
+            Toast.makeText(context, "فعلاً فقط فایل‌های ZIP قابل استخراج هستند", Toast.LENGTH_SHORT).show()
+            return
+        }
+        scope.launch {
+            busy = true
+            val extracted = withContext(Dispatchers.IO) {
+                extractZipArchive(context, archive, destination)
+            }
+            busy = false
+            if (extracted != null) {
+                selectedUris.clear()
+                refreshKey++
+                Toast.makeText(context, "${extracted.second} فایل استخراج شد", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "استخراج انجام نشد؛ فایل ZIP ممکن است خراب یا بیش از حد بزرگ باشد", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -408,6 +516,7 @@ private fun TigerFilesApp() {
         when (screen) {
             AppScreen.HOME -> HomeDashboard(
                 Modifier.padding(padding), rootFolder, remember { readStorageInfo() }, recentFiles,
+                remember(allFiles) { allFiles.filter { !it.isDirectory }.sortedByDescending { it.length() }.take(5) },
                 dashboardFileCount, dashboardFolderCount, dashboardCounts, scanning,
                 onChooseFolder = { folderPicker.launch(null) },
                 onOpenFiles = { screen = AppScreen.FILES; category = FileCategory.ALL },
@@ -433,6 +542,8 @@ private fun TigerFilesApp() {
                 onPaste = { pasteClipboard() },
                 onRefresh = { refreshKey++ },
                 onClearSelection = { selectedUris.clear() },
+                onZip = { compressSelectedFiles() },
+                onExtract = { extractSelectedZip() },
                 onDetails = { detailsTarget = it; showDetailsDialog = true },
                 isFavorite = { favoriteUris.contains(it.uri.toString()) },
                 onToggleFavorite = { toggleFavorite(it) },
@@ -575,6 +686,20 @@ private fun TigerFilesApp() {
             confirmButton = { TextButton(onClick = { showDetailsDialog = false; detailsTarget = null }) { Text("بستن") } }
         )
     }
+    if (showEditorDialog && editorFile != null) {
+        FileEditorDialog(
+            fileName = editorFile?.name ?: "ویرایش فایل",
+            text = editorText,
+            loading = editorLoading,
+            saving = editorSaving,
+            onTextChange = { if (it.length <= MAX_TEXT_EDITOR_CHARS) editorText = it },
+            onDismiss = {
+                showEditorDialog = false
+                editorFile = null
+            },
+            onSave = { saveEditedFile() }
+        )
+    }
 }
 
 @Composable
@@ -588,6 +713,7 @@ private fun HomeDashboard(
     rootFolder: DocumentFile?,
     storageInfo: StorageInfo,
     recentFiles: List<DocumentFile>,
+    largestFiles: List<DocumentFile>,
     fileCount: Int,
     folderCount: Int,
     categoryCounts: Map<FileCategory, Int>,
@@ -668,6 +794,14 @@ private fun HomeDashboard(
             }
         } else {
             items(recentFiles, key = { "recent_" + it.uri.toString() }) { file ->
+                FileRowCard(file, false, false, false, { onOpenFile(file) }, {}, {})
+            }
+        }
+        if (largestFiles.isNotEmpty()) {
+            item {
+                SectionHeading("فایل‌های حجیم", "پنج فایل با بیشترین حجم در پوشه انتخابی")
+            }
+            items(largestFiles, key = { "largest_" + it.uri.toString() }) { file ->
                 FileRowCard(file, false, false, false, { onOpenFile(file) }, {}, {})
             }
         }
@@ -926,6 +1060,8 @@ private fun BrowserScreen(
     onPaste: () -> Unit,
     onRefresh: () -> Unit,
     onClearSelection: () -> Unit,
+    onZip: () -> Unit,
+    onExtract: () -> Unit,
     onDetails: (DocumentFile) -> Unit,
     isFavorite: (DocumentFile) -> Boolean,
     onToggleFavorite: (DocumentFile) -> Unit,
@@ -994,7 +1130,7 @@ private fun BrowserScreen(
             }
         }
         if (selectedCount > 0) {
-            SelectionActions(selectedCount, onCopy, onCut, onFavorite, onShare, onDelete, onRename, onClearSelection)
+            SelectionActions(selectedCount, onCopy, onCut, onFavorite, onShare, onDelete, onRename, onClearSelection, onZip, onExtract)
         } else if (clipboardCount > 0 && category == FileCategory.ALL && query.isBlank()) {
             FilledTonalButton(onClick = onPaste, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.ContentPaste, contentDescription = null)
@@ -1060,7 +1196,9 @@ private fun SelectionActions(
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onRename: () -> Unit,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    onZip: () -> Unit,
+    onExtract: () -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.62f)).padding(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1074,6 +1212,8 @@ private fun SelectionActions(
             ActionChip("علاقه‌مندی", Icons.Default.FavoriteBorder, onFavorite)
             ActionChip("اشتراک", Icons.Default.Share, onShare)
             if (count == 1) ActionChip("تغییر نام", Icons.Default.Edit, onRename)
+            ActionChip("فشرده‌سازی ZIP", Icons.Default.Archive, onZip)
+            if (count == 1) ActionChip("استخراج ZIP", Icons.Default.Archive, onExtract)
             ActionChip("حذف", Icons.Default.Delete, onDelete)
         }
     }
