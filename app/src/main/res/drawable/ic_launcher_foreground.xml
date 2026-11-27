@@ -4,17 +4,39 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Golden folder silhouette -->
     <path
-        android:fillColor="#F2A900"
-        android:pathData="M20,25 L42,33 Q54,27 66,33 L88,25 L84,48 Q87,63 76,77 Q66,91 54,94 Q42,91 32,77 Q21,63 24,48 Z" />
+        android:fillColor="#FFB51B"
+        android:pathData="M14,57 Q14,52 20,52 H43 L50,59 H88 Q94,59 94,65 V88 Q94,94 88,94 H20 Q14,94 14,88 Z" />
     <path
-        android:fillColor="#111820"
-        android:pathData="M25,30 L43,39 L35,50 L28,48 Z M83,30 L65,39 L73,50 L80,48 Z M45,33 L54,45 L63,33 L58,54 L54,59 L50,54 Z M31,59 L45,64 L40,72 L33,68 Z M77,59 L63,64 L68,72 L75,68 Z" />
+        android:fillColor="#FFD15A"
+        android:pathData="M14,65 Q14,61 20,61 H88 Q94,61 94,66 V70 H14 Z" />
+    <!-- Tiger ears and head -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M37,53 Q45,47 51,55 Q46,63 38,60 Z M71,53 Q63,47 57,55 Q62,63 70,60 Z" />
+        android:fillColor="#F28C00"
+        android:pathData="M24,35 L20,17 Q34,19 42,27 Q54,20 66,27 Q74,19 88,17 L84,39 Q91,51 83,66 Q74,82 54,84 Q34,82 25,66 Q17,51 24,35 Z" />
     <path
-        android:fillColor="#111820"
-        android:pathData="M42,55 Q46,52 49,56 L46,59 Z M66,55 Q62,52 59,56 L62,59 Z M48,69 Q54,64 60,69 Q58,77 54,77 Q50,77 48,69 Z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M50,81 Q54,84 58,81 Q56,88 54,88 Q52,88 50,81 Z" />
+        android:fillColor="#FFF1D4"
+        android:pathData="M24,25 Q32,25 39,33 L31,43 Z M84,25 Q76,25 69,33 L77,43 Z M29,55 Q38,47 48,55 Q45,69 34,68 Z M79,55 Q70,47 60,55 Q63,69 74,68 Z M43,67 Q54,61 65,67 Q62,79 54,80 Q46,79 43,67 Z" />
+    <!-- Bold black tiger stripes -->
+    <path
+        android:fillColor="#15191D"
+        android:pathData="M26,31 L43,39 L35,47 L27,43 Z M82,31 L65,39 L73,47 L81,43 Z M47,27 L54,43 L61,27 L58,49 L54,54 L50,49 Z M31,49 L43,54 L38,61 L30,58 Z M77,49 L65,54 L70,61 L78,58 Z M44,20 L48,34 L42,30 Z M64,20 L60,34 L66,30 Z" />
+    <!-- Eyes -->
+    <path
+        android:fillColor="#FFC928"
+        android:pathData="M34,54 Q42,47 49,55 Q43,62 35,60 Z M74,54 Q66,47 59,55 Q65,62 73,60 Z" />
+    <path
+        android:fillColor="#15191D"
+        android:pathData="M41,53 L46,56 L42,60 Z M67,53 L62,56 L66,60 Z" />
+    <!-- Muzzle, nose and mouth -->
+    <path
+        android:fillColor="#FFF7E8"
+        android:pathData="M42,64 Q48,60 54,66 Q60,60 66,64 Q64,74 54,76 Q44,74 42,64 Z" />
+    <path
+        android:fillColor="#C9432D"
+        android:pathData="M49,65 Q54,62 59,65 Q57,70 54,70 Q51,70 49,65 Z" />
+    <path
+        android:fillColor="#15191D"
+        android:pathData="M54,70 V75 M54,75 Q49,80 45,76 M54,75 Q59,80 63,76" />
 </vector>
