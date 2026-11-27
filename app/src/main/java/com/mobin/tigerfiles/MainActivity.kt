@@ -1258,7 +1258,7 @@ private fun FileRowCard(
             Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
                 Text(file.name ?: "بدون نام", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(if (folder) "پوشه" else formatBytes(file.length()) + "  •  " + friendlyFileType(file), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (folder) "پوشه" else formatBytes(cachedLength(file)) + "  •  " + friendlyFileType(file), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (selected) Icon(Icons.Default.Check, contentDescription = "انتخاب شده", tint = MaterialTheme.colorScheme.primary)
             else {
@@ -1300,7 +1300,7 @@ private fun FileGridCard(
             }
             Spacer(Modifier.height(10.dp))
             Text(file.name ?: "بدون نام", fontWeight = FontWeight.SemiBold, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(if (folder) "پوشه" else formatBytes(file.length()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (folder) "پوشه" else formatBytes(cachedLength(file)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
