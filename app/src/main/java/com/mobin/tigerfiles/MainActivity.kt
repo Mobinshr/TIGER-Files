@@ -49,6 +49,7 @@ import com.mobin.tigerfiles.ui.theme.TigerFilesTheme
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -169,7 +170,7 @@ private fun TigerFilesApp() {
     LaunchedEffect(currentFolder, refreshKey) {
         currentFolderFiles = emptyList()
         currentFolderFiles = withContext(Dispatchers.IO) {
-            runCatching { currentFolder?.listFiles()?.toList().orEmpty() }
+            runCatching { currentFolder?.listFiles()?.toList().orEmpty().onEach(::cacheDocumentMetadata) }
                 .getOrDefault(emptyList())
         }
     }
@@ -197,8 +198,8 @@ private fun TigerFilesApp() {
         } else source
         when (sortMode) {
             SortMode.NAME -> filtered.sortedWith(compareBy<DocumentFile>({ !it.isDirectory }, { it.name.orEmpty().lowercase(Locale.ROOT) }))
-            SortMode.SIZE -> filtered.sortedByDescending { it.length() }
-            SortMode.DATE -> filtered.sortedByDescending { it.lastModified() }
+            SortMode.SIZE -> filtered.sortedByDescending { cachedLength(it) }
+            SortMode.DATE -> filtered.sortedByDescending { cachedLastModified(it) }
             SortMode.TYPE -> filtered.sortedWith(compareBy<DocumentFile>(
                 { !it.isDirectory },
                 { it.name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT) },
@@ -682,8 +683,8 @@ private fun TigerFilesApp() {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DetailLine("نام", file.name ?: "بدون نام")
                     DetailLine("نوع", friendlyFileType(file))
-                    DetailLine("حجم", if (file.isDirectory) "—" else formatBytes(file.length()))
-                    DetailLine("آخرین تغییر", if (file.lastModified() > 0L) DateFormat.getDateTimeInstance().format(Date(file.lastModified())) else "نامشخص")
+                    DetailLine("حجم", if (file.isDirectory) "—" else formatBytes(cachedLength(file)))
+                    DetailLine("آخرین تغییر", if (cachedLastModified(file) > 0L) DateFormat.getDateTimeInstance().format(Date(cachedLastModified(file))) else "نامشخص")
                     DetailLine("شناسه", file.uri.lastPathSegment ?: "—")
                 }
             },
@@ -1408,6 +1409,7 @@ private data class FileScanSummary(
 
 private fun scanFolderSummary(root: DocumentFile?): FileScanSummary {
     val files = root?.let { scanFolderTree(it, maxDepth = 6, maxItems = 1500) }.orEmpty()
+    files.forEach(::cacheDocumentMetadata)
     val counts = FileCategory.values().associateWith { 0 }.toMutableMap()
     var fileCount = 0
     var folderCount = 0
@@ -1424,7 +1426,7 @@ private fun scanFolderSummary(root: DocumentFile?): FileScanSummary {
     }
     val largestFiles = files.asSequence()
         .filterNot { it.isDirectory }
-        .sortedByDescending { file -> runCatching { file.length() }.getOrDefault(0L) }
+        .sortedByDescending { file -> cachedLength(file) }
         .take(5)
         .toList()
     return FileScanSummary(files, counts, fileCount, folderCount, largestFiles)
@@ -1602,3 +1604,21 @@ private fun formatBytes(bytes: Long): String {
         else -> toPersianDigits(bytes.toString()) + " بایت"
     }
 }
+
+private data class CachedDocumentMetadata(val size: Long, val lastModified: Long)
+
+private val documentMetadataCache = ConcurrentHashMap<String, CachedDocumentMetadata>()
+
+private fun cacheDocumentMetadata(file: DocumentFile) {
+    val key = file.uri.toString()
+    documentMetadataCache[key] = CachedDocumentMetadata(
+        size = if (file.isDirectory) 0L else runCatching { file.length() }.getOrDefault(0L),
+        lastModified = runCatching { file.lastModified() }.getOrDefault(0L)
+    )
+}
+
+private fun cachedLength(file: DocumentFile): Long =
+    documentMetadataCache[file.uri.toString()]?.size ?: 0L
+
+private fun cachedLastModified(file: DocumentFile): Long =
+    documentMetadataCache[file.uri.toString()]?.lastModified ?: 0L
