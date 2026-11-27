@@ -43,7 +43,7 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
       - name: Compile Kotlin source before signing
-        run: gradle :app:compileDebugKotlin
+        run: gradle :app:compileReleaseKotlin
       - name: Restore and verify stable signing key
         env:
           ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
@@ -65,12 +65,12 @@ jobs:
             exit 1
           fi
           echo "Stable signing certificate verified: $ACTUAL_SHA1"
-      - name: Build debug APK
-        run: gradle :app:assembleDebug
+      - name: Build optimized release APK
+        run: gradle :app:assembleRelease
       - name: Verify APK package, version, minimum Android and signature
         run: |
           set -euo pipefail
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APK="app/build/outputs/apk/release/app-release.apk"
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -1)
           VERSION_NAME=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
           test -s "$APK"
@@ -80,12 +80,14 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/tiger-badging.txt
           grep -F "package: name='com.mobin.tigerfiles' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" /tmp/tiger-badging.txt
           grep -F "sdkVersion:'29'" /tmp/tiger-badging.txt
-          echo "TIGER Files APK package, version and Android 10 minimum verified."
-      - name: Upload debug APK
+          APK_BYTES="$(stat -c '%s' "$APK")"
+          echo "Optimized APK size: $APK_BYTES bytes"
+          echo "TIGER Files release APK package, version, Android 10 minimum and signature verified."
+      - name: Upload optimized release APK
         uses: actions/upload-artifact@v4
         with:
           name: TIGER-Files-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -114,7 +116,7 @@ jobs:
           if gh release view latest --repo "$REPOSITORY" >/dev/null 2>&1; then
             gh release delete latest --repo "$REPOSITORY" --cleanup-tag --yes
           fi
-          gh release create latest release-assets/app-debug.apk \
+          gh release create latest release-assets/app-release.apk \
             --repo "$REPOSITORY" \
             --title "TIGER Files $VERSION_NAME (Latest)" \
             --notes "Automatic build of TIGER Files.\n\nApp version: $VERSION_NAME\nPackage: com.mobin.tigerfiles\nMinimum Android: 10 (API 29)\nCommit: $GITHUB_SHA"

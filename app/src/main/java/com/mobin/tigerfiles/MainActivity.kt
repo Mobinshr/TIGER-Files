@@ -106,6 +106,7 @@ private fun TigerFilesApp() {
     var dashboardCounts by remember { mutableStateOf(FileCategory.values().associateWith { 0 }) }
     var dashboardFileCount by remember { mutableIntStateOf(0) }
     var dashboardFolderCount by remember { mutableIntStateOf(0) }
+    var dashboardLargestFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
     val selectedUris = remember { mutableStateListOf<String>() }
     val favoriteUris = remember { mutableStateListOf<String>().apply { addAll(prefs.getStringSet("favorites", emptySet()).orEmpty()) } }
     val recentUris = remember { mutableStateListOf<String>().apply { addAll(prefs.getString("recents", "").orEmpty().split("\n").filter { it.isNotBlank() }) } }
@@ -158,6 +159,7 @@ private fun TigerFilesApp() {
             dashboardCounts = summary.categoryCounts
             dashboardFileCount = summary.fileCount
             dashboardFolderCount = summary.folderCount
+            dashboardLargestFiles = summary.largestFiles
         } finally {
             scanning = false
         }
@@ -173,38 +175,40 @@ private fun TigerFilesApp() {
     }
 
     val indexedFiles = remember(allFiles) { allFiles.associateBy { it.uri.toString() } }
-    val favoriteFiles = favoriteUris.mapNotNull { indexedFiles[it] }
-    val recentFiles = recentUris.mapNotNull { indexedFiles[it] }.distinctBy { it.uri.toString() }.take(8)
-    val visibleFiles = when (screen) {
-        AppScreen.FAVORITES -> favoriteFiles
-        AppScreen.FILES -> {
-            val source = if (query.isNotBlank() || category != FileCategory.ALL) {
-                allFiles
-            } else {
-                currentFolderFiles
-            }
-            source.filter { file ->
-                val nameOk = query.isBlank() || file.name.orEmpty().contains(query, ignoreCase = true)
-                val hiddenOk = showHidden || !file.name.orEmpty().startsWith(".")
-                nameOk && hiddenOk && matchesCategory(file, category)
-            }
+    val favoriteKeys = favoriteUris.toList()
+    val recentKeys = recentUris.toList()
+    val selectedKeys = selectedUris.toSet()
+    val favoriteFiles = remember(indexedFiles, favoriteKeys) { favoriteKeys.mapNotNull { indexedFiles[it] } }
+    val recentFiles = remember(indexedFiles, recentKeys) {
+        recentKeys.mapNotNull { indexedFiles[it] }.distinctBy { it.uri.toString() }.take(8)
+    }
+    val visibleFiles = remember(
+        screen, favoriteFiles, allFiles, currentFolderFiles, query, showHidden, category, sortMode
+    ) {
+        val source = when (screen) {
+            AppScreen.FAVORITES -> favoriteFiles
+            AppScreen.FILES -> if (query.isNotBlank() || category != FileCategory.ALL) allFiles else currentFolderFiles
+            else -> emptyList()
         }
-        else -> emptyList()
-    }.let { list ->
+        val filtered = if (screen == AppScreen.FILES) source.filter { file ->
+            val nameOk = query.isBlank() || file.name.orEmpty().contains(query, ignoreCase = true)
+            val hiddenOk = showHidden || !file.name.orEmpty().startsWith(".")
+            nameOk && hiddenOk && matchesCategory(file, category)
+        } else source
         when (sortMode) {
-            SortMode.NAME -> list.sortedWith(compareBy<DocumentFile>({ !it.isDirectory }, { it.name.orEmpty().lowercase(Locale.ROOT) }))
-            SortMode.SIZE -> list.sortedByDescending { it.length() }
-            SortMode.DATE -> list.sortedByDescending { it.lastModified() }
-            SortMode.TYPE -> list.sortedWith(
-                compareBy<DocumentFile>(
-                    { !it.isDirectory },
-                    { it.name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT) },
-                    { it.name.orEmpty().lowercase(Locale.ROOT) }
-                )
-            )
+            SortMode.NAME -> filtered.sortedWith(compareBy<DocumentFile>({ !it.isDirectory }, { it.name.orEmpty().lowercase(Locale.ROOT) }))
+            SortMode.SIZE -> filtered.sortedByDescending { it.length() }
+            SortMode.DATE -> filtered.sortedByDescending { it.lastModified() }
+            SortMode.TYPE -> filtered.sortedWith(compareBy<DocumentFile>(
+                { !it.isDirectory },
+                { it.name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT) },
+                { it.name.orEmpty().lowercase(Locale.ROOT) }
+            ))
         }
     }
-    val selectedFiles = visibleFiles.filter { selectedUris.contains(it.uri.toString()) }
+    val selectedFiles = remember(visibleFiles, selectedKeys) {
+        visibleFiles.filter { selectedKeys.contains(it.uri.toString()) }
+    }
 
     fun persistFavorites() { prefs.edit().putStringSet("favorites", favoriteUris.toSet()).apply() }
     fun toggleFavorite(file: DocumentFile) {
@@ -516,7 +520,7 @@ private fun TigerFilesApp() {
         when (screen) {
             AppScreen.HOME -> HomeDashboard(
                 Modifier.padding(padding), rootFolder, remember { readStorageInfo() }, recentFiles,
-                remember(allFiles) { allFiles.filter { !it.isDirectory }.sortedByDescending { it.length() }.take(5) },
+                dashboardLargestFiles,
                 dashboardFileCount, dashboardFolderCount, dashboardCounts, scanning,
                 onChooseFolder = { folderPicker.launch(null) },
                 onOpenFiles = { screen = AppScreen.FILES; category = FileCategory.ALL },
@@ -1398,7 +1402,8 @@ private data class FileScanSummary(
     val files: List<DocumentFile>,
     val categoryCounts: Map<FileCategory, Int>,
     val fileCount: Int,
-    val folderCount: Int
+    val folderCount: Int,
+    val largestFiles: List<DocumentFile>
 )
 
 private fun scanFolderSummary(root: DocumentFile?): FileScanSummary {
@@ -1417,7 +1422,12 @@ private fun scanFolderSummary(root: DocumentFile?): FileScanSummary {
             if (category != null) counts[category] = (counts[category] ?: 0) + 1
         }
     }
-    return FileScanSummary(files, counts, fileCount, folderCount)
+    val largestFiles = files.asSequence()
+        .filterNot { it.isDirectory }
+        .sortedByDescending { file -> runCatching { file.length() }.getOrDefault(0L) }
+        .take(5)
+        .toList()
+    return FileScanSummary(files, counts, fileCount, folderCount, largestFiles)
 }
 
 private fun scanFolderTree(root: DocumentFile, maxDepth: Int, maxItems: Int): List<DocumentFile> {
