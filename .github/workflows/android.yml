@@ -1,4 +1,4 @@
-name: TIGER Files Android CI and Latest Release
+name: File Manager Android CI and Latest Release
 
 on:
   push:
@@ -16,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: tiger-files-android-release
+  group: file-manager-android-release
   cancel-in-progress: false
 
 jobs:
@@ -77,16 +77,16 @@ jobs:
           test -n "$VERSION_CODE"
           test -n "$VERSION_NAME"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/tiger-badging.txt
-          grep -F "package: name='com.mobin.tigerfiles' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" /tmp/tiger-badging.txt
-          grep -F "sdkVersion:'29'" /tmp/tiger-badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/file-manager-badging.txt
+          grep -F "package: name='com.mobin.tigerfiles' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" /tmp/file-manager-badging.txt
+          grep -F "sdkVersion:'29'" /tmp/file-manager-badging.txt
           APK_BYTES="$(stat -c '%s' "$APK")"
           echo "Optimized APK size: $APK_BYTES bytes"
-          echo "TIGER Files release APK package, version, Android 10 minimum and signature verified."
+          echo "File Manager release APK package, version, Android 10 minimum and signature verified."
       - name: Upload optimized release APK
         uses: actions/upload-artifact@v4
         with:
-          name: TIGER-Files-APK
+          name: File-Manager-APK
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
@@ -100,7 +100,7 @@ jobs:
       - name: Download APK
         uses: actions/download-artifact@v4
         with:
-          name: TIGER-Files-APK
+          name: File-Manager-APK
           path: release-assets
       - name: Publish latest APK
         env:
@@ -118,5 +118,5 @@ jobs:
           fi
           gh release create latest release-assets/app-release.apk \
             --repo "$REPOSITORY" \
-            --title "TIGER Files $VERSION_NAME (Latest)" \
-            --notes "Automatic build of TIGER Files.\n\nApp version: $VERSION_NAME\nPackage: com.mobin.tigerfiles\nMinimum Android: 10 (API 29)\nCommit: $GITHUB_SHA"
+            --title "File Manager $VERSION_NAME (Latest)" \
+            --notes "Automatic build of File Manager.\\n\\nApp version: $VERSION_NAME\\nPackage: com.mobin.tigerfiles\\nMinimum Android: 10 (API 29)\\nCommit: $GITHUB_SHA"
