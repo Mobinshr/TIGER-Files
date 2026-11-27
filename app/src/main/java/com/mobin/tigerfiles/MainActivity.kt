@@ -101,6 +101,7 @@ private fun TigerFilesApp() {
     var scanning by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var allFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var currentFolderFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
     val selectedUris = remember { mutableStateListOf<String>() }
     val favoriteUris = remember { mutableStateListOf<String>().apply { addAll(prefs.getStringSet("favorites", emptySet()).orEmpty()) } }
     val recentUris = remember { mutableStateListOf<String>().apply { addAll(prefs.getString("recents", "").orEmpty().split("\n").filter { it.isNotBlank() }) } }
@@ -151,6 +152,15 @@ private fun TigerFilesApp() {
         }
     }
 
+    // Query the current folder off the main thread to keep navigation responsive.
+    LaunchedEffect(currentFolder, refreshKey) {
+        currentFolderFiles = emptyList()
+        currentFolderFiles = withContext(Dispatchers.IO) {
+            runCatching { currentFolder?.listFiles()?.toList().orEmpty() }
+                .getOrDefault(emptyList())
+        }
+    }
+
     val indexedFiles = remember(allFiles) { allFiles.associateBy { it.uri.toString() } }
     val favoriteFiles = favoriteUris.mapNotNull { indexedFiles[it] }
     val recentFiles = recentUris.mapNotNull { indexedFiles[it] }.distinctBy { it.uri.toString() }.take(8)
@@ -160,7 +170,7 @@ private fun TigerFilesApp() {
             val source = if (query.isNotBlank() || category != FileCategory.ALL) {
                 allFiles
             } else {
-                runCatching { currentFolder?.listFiles()?.toList().orEmpty() }.getOrDefault(emptyList())
+                currentFolderFiles
             }
             source.filter { file ->
                 val nameOk = query.isBlank() || file.name.orEmpty().contains(query, ignoreCase = true)
