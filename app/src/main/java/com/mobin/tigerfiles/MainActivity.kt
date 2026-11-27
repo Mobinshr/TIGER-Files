@@ -684,11 +684,14 @@ private fun TigerFilesApp() {
                         scope.launch {
                             busy = true
                             val result = withContext(Dispatchers.IO) {
-                                if (destination.findFile(name) != null) 0
-                                else runCatching {
-                                    if (makeFile) destination.createFile(mimeFromName(name), name)
-                                    else destination.createDirectory(name)
-                                }.getOrNull()?.let { 1 } ?: -1
+                                runCatching {
+                                    if (destination.findFile(name) != null) 0
+                                    else {
+                                        val created = if (makeFile) destination.createFile(mimeFromName(name), name)
+                                            else destination.createDirectory(name)
+                                        if (created != null) 1 else -1
+                                    }
+                                }.getOrDefault(-1)
                             }
                             busy = false
                             when (result) {
@@ -723,7 +726,16 @@ private fun TigerFilesApp() {
                         !name.contains('/') && !name.contains(92.toChar()) && !name.contains(0.toChar())) {
                         scope.launch {
                             busy = true
-                            val ok = withContext(Dispatchers.IO) { runCatching { target.renameTo(name) }.getOrDefault(false) }
+                            val ok = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    val parent = currentFolder
+                                    when {
+                                        cachedName(target) == name -> true
+                                        parent != null && parent.findFile(name) != null -> false
+                                        else -> target.renameTo(name)
+                                    }
+                                }.getOrDefault(false)
+                            }
                             busy = false
                             Toast.makeText(context, if (ok) "نام فایل تغییر کرد" else "تغییر نام انجام نشد", Toast.LENGTH_SHORT).show()
                             selectedUris.clear()
@@ -755,7 +767,7 @@ private fun TigerFilesApp() {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DetailLine("نام", cachedName(file).ifBlank { "بدون نام" })
                     DetailLine("نوع", friendlyFileType(file))
-                    DetailLine("حجم", if (file.isDirectory) "—" else formatBytes(cachedLength(file)))
+                    DetailLine("حجم", if (cachedIsDirectory(file)) "—" else formatBytes(cachedLength(file)))
                     DetailLine("آخرین تغییر", if (cachedLastModified(file) > 0L) DateFormat.getDateTimeInstance().format(Date(cachedLastModified(file))) else "نامشخص")
                     DetailLine("شناسه", file.uri.lastPathSegment ?: "—")
                 }
@@ -765,7 +777,7 @@ private fun TigerFilesApp() {
     }
     if (showEditorDialog && editorFile != null) {
         FileEditorDialog(
-            fileName = editorFile?.name ?: "ویرایش فایل",
+            fileName = editorFile?.let { cachedName(it) } ?: "ویرایش فایل",
             text = editorText,
             loading = editorLoading,
             saving = editorSaving,
@@ -968,7 +980,7 @@ private fun DashboardHero(
                 if (rootFolder != null) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "پوشه فعال: " + (rootFolder.name ?: "حافظه انتخاب‌شده"),
+                        "پوشه فعال: " + (cachedName(rootFolder).ifBlank { "حافظه انتخاب‌شده" }),
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.64f),
                         maxLines = 1,
@@ -1162,7 +1174,7 @@ private fun BrowserScreen(
         Spacer(Modifier.height(10.dp))
         if (currentFolder != null) {
             Text(
-                currentFolder.name ?: "حافظه",
+                cachedName(currentFolder).ifBlank { "حافظه" },
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
@@ -1198,7 +1210,7 @@ private fun BrowserScreen(
                         )
                     ) {
                         Text(
-                            folder.name ?: "حافظه",
+                            cachedName(folder).ifBlank { "حافظه" },
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = if (index == pathStack.lastIndex) FontWeight.Bold else FontWeight.Normal
                         )
@@ -1445,7 +1457,7 @@ private fun SettingsScreen(
             Column(Modifier.padding(16.dp)) {
                 Text("پوشه اصلی", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(5.dp))
-                Text(rootFolder?.name ?: "هیچ پوشه‌ای انتخاب نشده", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text(rootFolder?.let { cachedName(it) }?.ifBlank { "هیچ پوشه‌ای انتخاب نشده" } ?: "هیچ پوشه‌ای انتخاب نشده", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = onChooseFolder, modifier = Modifier.fillMaxWidth()) { Text("تغییر پوشه اصلی") }
             }
@@ -1498,6 +1510,7 @@ private data class FileScanSummary(
 private data class FolderScanResult(val files: List<DocumentFile>, val scanLimited: Boolean)
 
 private fun scanFolderSummary(root: DocumentFile?): FileScanSummary {
+    root?.let(::cacheDocumentMetadata)
     val scan = root?.let { scanFolderTree(it, maxDepth = 32, maxItems = 50000) }
         ?: FolderScanResult(emptyList(), false)
     val files = scan.files
@@ -1709,9 +1722,9 @@ private fun copyDocument(context: Context, source: DocumentFile, destination: Do
         return try {
             val input = context.contentResolver.openInputStream(node.uri)
                 ?: throw IOException("Cannot open source")
-            val output = context.contentResolver.openOutputStream(target.uri, "w")
-                ?: throw IOException("Cannot open destination")
             input.use { sourceStream ->
+                val output = context.contentResolver.openOutputStream(target.uri, "w")
+                    ?: throw IOException("Cannot open destination")
                 output.use { targetStream -> sourceStream.copyTo(targetStream, 64 * 1024) }
             }
             true
