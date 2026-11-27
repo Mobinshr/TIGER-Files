@@ -162,6 +162,10 @@ private fun TigerFilesApp() {
 
     LaunchedEffect(rootFolder, refreshKey) {
         scanning = true
+        // Drop references and metadata from the previous scan immediately. This
+        // also prevents global search from briefly showing results from an old root.
+        allFiles = emptyList()
+        documentMetadataCache.clear()
         try {
             val summary = withContext(Dispatchers.IO) { scanFolderSummary(rootFolder) }
             allFiles = summary.files
@@ -1501,7 +1505,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        Text("نسخه ۰٫۷٫۴", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("نسخه ۰٫۷٫۵", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("ساخته شده توسط mobin", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -1533,7 +1537,7 @@ private data class FolderScanResult(val files: List<DocumentFile>, val scanLimit
 
 private fun scanFolderSummary(root: DocumentFile?): FileScanSummary {
     root?.let(::cacheDocumentMetadata)
-    val scan = root?.let { scanFolderTree(it, maxDepth = 32, maxItems = 50000) }
+    val scan = root?.let { scanFolderTree(it, maxDepth = 32, maxItems = 15000) }
         ?: FolderScanResult(emptyList(), false)
     val files = scan.files
     val counts = FileCategory.values().associateWith { 0 }.toMutableMap()
@@ -1788,10 +1792,15 @@ private data class CachedDocumentMetadata(
     val lastModified: Long
 )
 
+private const val MAX_DOCUMENT_METADATA_ENTRIES = 20_000
 private val documentMetadataCache = ConcurrentHashMap<String, CachedDocumentMetadata>()
 
 private fun cacheDocumentMetadata(file: DocumentFile) {
     val key = file.uri.toString()
+    if (!documentMetadataCache.containsKey(key) && documentMetadataCache.size >= MAX_DOCUMENT_METADATA_ENTRIES) {
+        // Cached values are an optimization only; clearing them never invalidates SAF access.
+        documentMetadataCache.clear()
+    }
     documentMetadataCache.computeIfAbsent(key) {
         val directory = runCatching { file.isDirectory }.getOrDefault(false)
         val name = runCatching { file.name }.getOrNull().orEmpty()

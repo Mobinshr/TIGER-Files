@@ -5,7 +5,7 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 ## App details
 
 - Application ID: `com.mobin.tigerfiles`
-- Version: **0.7.4**
+- Version: **0.7.5**
 - Minimum Android: **Android 10 (API 29)**
 - Target SDK: 35
 - Persian RTL interface with automatic system light/dark theme
@@ -19,7 +19,7 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 - Optimized release APK with R8 code shrinking and Android resource shrinking
 - Developer-only Compose preview/tooling libraries excluded from the installed app
 - Browse folders and files, with grid and list layouts
-- Recursive search across the selected folder tree (up to 50,000 entries and depth 32; the app shows a notice if the safety limit is reached)
+- Recursive search across the selected folder tree (up to 15,000 entries and depth 32; the app shows a notice if the safety limit is reached)
 - Filter images, videos, audio, documents, APKs, archives and folders
 - Sort by name, size or modified date
 - Multi-select files and folders
@@ -40,3 +40,10 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 ## Build and signing
 
 GitHub Actions builds the optimized signed release APK and publishes it as the `latest` release. The workflow verifies the stable signing certificate and reads the version directly from Gradle configuration.
+
+
+## Memory and scan limits (0.7.5)
+
+- A new root scan drops the previous result list and metadata cache before scanning, preventing stale cross-folder search results and reducing overlapping memory use.
+- The recursive global index is capped at 15,000 entries (depth 32); browsing directly into folders remains available beyond the index limit.
+- The metadata cache is bounded to 20,000 entries and can be repopulated from Storage Access Framework metadata when needed.
