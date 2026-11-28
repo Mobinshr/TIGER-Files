@@ -160,8 +160,8 @@ private fun FileManagerApp() {
             updateChecking = true
             updateStatus = "در حال بررسی نسخهٔ جدید..."
             val result = runCatching { AppUpdateClient.checkForUpdate(context) }
-            prefs.edit().putLong("last_update_check", System.currentTimeMillis()).apply()
             result.onSuccess { available ->
+                prefs.edit().putLong("last_update_check", System.currentTimeMillis()).apply()
                 updateInfo = available
                 if (available != null) {
                     updateStatus = "نسخهٔ جدید " + available.versionName + " آماده است"
