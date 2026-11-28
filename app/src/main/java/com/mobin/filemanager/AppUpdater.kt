@@ -68,16 +68,16 @@ internal object AppUpdateClient {
 
             val release = connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
             val body = release.optString("body", "")
-            val versionName = capture(body, Regex("""(?m)^\s*App version:\s*(\S+)\s*$"""))
+            val versionName = capture(body, Regex("""(?m)^\s*(?:[-*]\s*)?(?:\*\*)?App version:(?:\*\*)?\s*(\S+)\s*$"""))
                 ?: throw IOException("شمارهٔ نسخه در اطلاعات انتشار پیدا نشد")
-            val packageName = capture(body, Regex("""(?m)^\s*Package:\s*(\S+)\s*$"""))
+            val packageName = capture(body, Regex("""(?m)^\s*(?:[-*]\s*)?(?:\*\*)?Package:(?:\*\*)?\s*(\S+)\s*$"""))
                 ?: throw IOException("شناسهٔ برنامه در اطلاعات انتشار پیدا نشد")
 
             if (packageName != context.packageName) {
                 throw SecurityException("این به‌روزرسانی برای این برنامه ساخته نشده است")
             }
 
-            val remoteVersionCode = capture(body, Regex("""(?m)^\s*Version code:\s*(\d+)\s*$"""))
+            val remoteVersionCode = capture(body, Regex("""(?m)^\s*(?:[-*]\s*)?(?:\*\*)?Version code:(?:\*\*)?\s*(\d+)\s*$"""))
                 ?.toLongOrNull()
 
             val assets = release.optJSONArray("assets") ?: throw IOException("فایل نصب در انتشار پیدا نشد")
@@ -113,7 +113,7 @@ internal object AppUpdateClient {
 
             val notes = body.lineSequence()
                 .filterNot {
-                    val line = it.trim()
+                    val line = it.trim().removePrefix("- ").removePrefix("* ").replace("**", "").trim()
                     line.startsWith("Automatic build of ") ||
                         line.startsWith("App version:") ||
                         line.startsWith("Version code:") ||
@@ -276,7 +276,11 @@ private suspend fun downloadAndInstall(
             .putLong("pending_update_download_id", downloadId)
             .apply()
 
+        val startedAt = System.currentTimeMillis()
         while (true) {
+            if (System.currentTimeMillis() - startedAt > 20L * 60L * 1000L) {
+                throw IOException("دانلود بیش از حد طول کشید؛ دوباره تلاش کن")
+            }
             val snapshot = queryDownload(manager, downloadId)
             onProgress(snapshot.progress)
             when (snapshot.status) {
