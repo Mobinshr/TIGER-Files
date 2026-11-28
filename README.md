@@ -7,7 +7,7 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 - Application name: **File Manager**
 - Android application ID: `com.mobin.tigerfiles` (kept stable so existing installations can receive updates)
 - Kotlin namespace: `com.mobin.filemanager`
-- Version: **0.8.1**
+- Version: **0.8.3**
 - Minimum Android: **Android 10 (API 29)**
 - Target SDK: 35
 - Persian RTL interface with automatic system light/dark theme
