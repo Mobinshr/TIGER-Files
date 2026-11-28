@@ -117,18 +117,8 @@ jobs:
           if gh release view latest --repo "$REPOSITORY" >/dev/null 2>&1; then
             gh release delete latest --repo "$REPOSITORY" --cleanup-tag --yes
           fi
+          NOTES=$(printf "File Manager automatic release.\n\nWhat's new:\n- Added in-app update checking.\n- Added APK download progress and SHA-256 integrity verification.\n- Installation continues through the official Android package installer.\n\nApp version: %s\nVersion code: %s\nPackage: com.mobin.tigerfiles\nMinimum Android: 10 (API 29)\nCommit: %s" "$VERSION_NAME" "$VERSION_CODE" "$GITHUB_SHA")
           gh release create latest release-assets/app-release.apk \
             --repo "$REPOSITORY" \
             --title "File Manager $VERSION_NAME (Latest)" \
-            --notes "File Manager automatic release.
-
-What's new:
-- Added in-app update checking.
-- Added APK download progress and SHA-256 integrity verification.
-- Installation continues through the official Android package installer.
-
-App version: $VERSION_NAME
-Version code: $VERSION_CODE
-Package: com.mobin.tigerfiles
-Minimum Android: 10 (API 29)
-Commit: $GITHUB_SHA"
+            --notes "$NOTES"
