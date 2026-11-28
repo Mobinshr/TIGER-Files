@@ -12,8 +12,8 @@ android {
         applicationId = "com.mobin.tigerfiles"
         minSdk = 29
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.8.3"
+        versionCode = 19
+        versionName = "0.9.0"
     }
 
     signingConfigs {

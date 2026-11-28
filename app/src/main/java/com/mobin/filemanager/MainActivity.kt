@@ -142,8 +142,45 @@ private fun FileManagerApp() {
     var editorLoading by remember { mutableStateOf(false) }
     var editorSaving by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var updateChecking by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf("هنوز بررسی نشده") }
+    var showUpdateDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val currentFolder = pathStack.lastOrNull()
+    val currentVersionName = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "نامشخص"
+        }.getOrDefault("نامشخص")
+    }
+
+    fun checkForUpdates() {
+        if (updateChecking) return
+        scope.launch {
+            updateChecking = true
+            updateStatus = "در حال بررسی نسخهٔ جدید..."
+            val result = runCatching { AppUpdateClient.checkForUpdate(context) }
+            prefs.edit().putLong("last_update_check", System.currentTimeMillis()).apply()
+            result.onSuccess { available ->
+                updateInfo = available
+                if (available != null) {
+                    updateStatus = "نسخهٔ جدید " + available.versionName + " آماده است"
+                    showUpdateDialog = true
+                } else {
+                    updateStatus = "برنامه به‌روز است"
+                }
+            }.onFailure {
+                updateStatus = "بررسی ناموفق بود؛ اتصال اینترنت را بررسی کن"
+            }
+            updateChecking = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val lastCheck = prefs.getLong("last_update_check", 0L)
+        val oneDay = 24L * 60L * 60L * 1000L
+        if (System.currentTimeMillis() - lastCheck >= oneDay) checkForUpdates()
+    }
 
     fun refreshFileData() {
         documentMetadataCache.clear()
@@ -658,6 +695,12 @@ private fun FileManagerApp() {
             )
             AppScreen.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
+                currentVersionName = currentVersionName,
+                updateStatus = if (updateChecking) "در حال بررسی..." else updateStatus,
+                updateChecking = updateChecking,
+                latestVersionName = updateInfo?.versionName,
+                onCheckUpdates = { checkForUpdates() },
+                onShowUpdate = { if (updateInfo != null) showUpdateDialog = true },
                 rootFolder = rootFolder,
                 showHidden = showHidden,
                 gridMode = gridMode,
@@ -900,6 +943,13 @@ private fun FileManagerApp() {
                 editorFile = null
             },
             onSave = { saveEditedFile() }
+        )
+    }
+    if (showUpdateDialog && updateInfo != null) {
+        AppUpdateDialog(
+            info = updateInfo!!,
+            currentVersionName = currentVersionName,
+            onDismiss = { showUpdateDialog = false }
         )
     }
 }
@@ -1610,6 +1660,12 @@ private fun FavoritesScreen(
 @Composable
 private fun SettingsScreen(
     modifier: Modifier,
+    currentVersionName: String,
+    updateStatus: String,
+    updateChecking: Boolean,
+    latestVersionName: String?,
+    onCheckUpdates: () -> Unit,
+    onShowUpdate: () -> Unit,
     rootFolder: DocumentFile?,
     showHidden: Boolean,
     gridMode: Boolean,
@@ -1715,6 +1771,29 @@ private fun SettingsScreen(
             )
         }
 
+        SettingsGroup("به‌روزرسانی برنامه", Icons.Default.Refresh) {
+            Text(
+                "نسخهٔ نصب‌شده: " + currentVersionName,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            )
+            SettingsActionRow(
+                "بررسی به‌روزرسانی",
+                updateStatus,
+                Icons.Default.Refresh,
+                onCheckUpdates
+            )
+            if (latestVersionName != null) {
+                SettingsActionRow(
+                    "مشاهده و نصب نسخهٔ " + latestVersionName,
+                    "نسخهٔ جدید برای این برنامه منتشر شده است",
+                    Icons.Default.Download,
+                    onShowUpdate
+                )
+            }
+        }
+
         SettingsGroup("پوشه و نگهداری", Icons.Default.FolderOpen) {
             Text(
                 rootFolder?.let { cachedName(it).ifBlank { "پوشهٔ انتخاب‌شده" } }
@@ -1754,7 +1833,7 @@ private fun SettingsScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Text("File Manager • نسخهٔ ۰٫۸٫۰", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("File Manager • نسخهٔ " + currentVersionName, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("ساخته شده توسط mobin", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

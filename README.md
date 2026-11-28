@@ -7,7 +7,7 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 - Application name: **File Manager**
 - Android application ID: `com.mobin.tigerfiles` (kept stable so existing installations can receive updates)
 - Kotlin namespace: `com.mobin.filemanager`
-- Version: **0.8.3**
+- Version: **0.9.0**
 - Minimum Android: **Android 10 (API 29)**
 - Target SDK: 35
 - Persian RTL interface with automatic system light/dark theme
@@ -31,6 +31,9 @@ A native Android file manager built with Kotlin and Jetpack Compose.
 - Create ZIP archives from one or multiple selected files and folders
 - Extract ZIP archives with path-traversal protection and extraction size limits
 - Persistent access to the selected folder
+- In-app update checks against the official GitHub release
+- APK download with live progress and SHA-256 integrity verification
+- Installation through Android's system package installer; user confirmation is always required
 - Folder enumeration, filtering and sorting are performed off the UI thread; cached metadata avoids repeated storage-provider queries
 - Create new folders and empty text/code files
 - Select all visible items and navigate through clickable folder breadcrumbs
