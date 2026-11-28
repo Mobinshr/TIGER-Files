@@ -271,6 +271,10 @@ private suspend fun downloadAndInstall(
     var downloadId = -1L
     try {
         downloadId = withContext(Dispatchers.IO) { manager.enqueue(request) }
+        context.getSharedPreferences("app_update_cleanup", Context.MODE_PRIVATE)
+            .edit()
+            .putLong("pending_update_download_id", downloadId)
+            .apply()
 
         while (true) {
             val snapshot = queryDownload(manager, downloadId)
@@ -306,6 +310,10 @@ private suspend fun downloadAndInstall(
         if (downloadId >= 0L) {
             withContext(Dispatchers.IO) { manager.remove(downloadId) }
         }
+        context.getSharedPreferences("app_update_cleanup", Context.MODE_PRIVATE)
+            .edit()
+            .remove("pending_update_download_id")
+            .apply()
         throw error
     }
 }
